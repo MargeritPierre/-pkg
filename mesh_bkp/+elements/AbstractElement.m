@@ -1,0 +1,233 @@
+classdef (Abstract) AbstractElement < handle & matlab.mixin.Heterogeneous
+%ABSTRACTELEMENT Base class for mesh elements
+
+
+%% (ABSTRACT) ELEMENT DEFINITION 
+% ELEMENT GEOMETRY
+    properties (Abstract , SetAccess = protected)
+        % Node local Coordinates [nNodes nDims]
+        NodeLocalCoordinates
+        % The list of faces [nFaces nMaxNodesByFace]
+        Faces 
+        % The list of edges [nEdges 2] 
+        Edges 
+    end
+% SHAPE FUNCTIONS
+    methods (Abstract)
+        % Evaluate the shape functions at local coordinates E
+        % So that f(E) = N*f_nodes
+        % E = [nE nDims] , N = [nE nNodes]
+        N = evalAt(this,E)
+    end
+% INTEGRATION QUADRATURE
+    properties (Abstract)
+        GaussIntegrationPoints % [nGaussIntPts nDims]
+        GaussIntegrationWeights % [nGaussIntPts 1]
+    end
+
+    
+%% GEOMETRIC INFORMATIONS
+    methods (Sealed)
+        % Number of ...
+        function val = nNodes(this) ; [val,~] = cellfun(@size,{this.NodeLocalCoordinates}) ; end
+        function val = nFaces(this) ; [val,~] = cellfun(@size,{this.Faces}) ; end
+        function val = nMaxNodesByFace(this) ; [~,val] = cellfun(@size,{this.Faces}) ; end
+        function val = nEdges(this) ; [val,~] = cellfun(@size,{this.Edges}) ; end
+        function val = nMaxNodesByEdge(this) ; [~,val] = cellfun(@size,{this.Edges}) ; end
+        % Parameter space
+        function val = nDims(this) ; [~,val] = cellfun(@size,{this.NodeLocalCoordinates}) ; end
+        function val = localCoordinatesDomain(this) 
+            val = [min(this.NodeLocalCoordinates,[],1) ; max(this.NodeLocalCoordinates,[],1)] ;
+        end
+        function val = localCoordinatesIn3D(this,e) 
+            if nargin<2 ; e = this.NodeLocalCoordinates ; end
+            val = [e zeros(size(e,1),3-size(e,2))] ;
+        end
+    end
+
+%% SHAPE FUNCTIONS DERIVATIVES (MAY BE OVERRIDEN)
+    methods
+        function DER = evalDerivativeAt(this,E,ORD,delta)
+        % Evaluate the partial derivatives of order ORD = [o1 o2 ...] (:[1 nDims]) of 
+        % shape functions at given local coordinates E:[nRows nDims]
+        % Evaluation performed by recursive finite differences. 
+        % When possible, it is preferred to override this method to provide
+        % analytical derivatives !
+        % exemple: df(E)/(dx²dy) = DER(E,[2 1 0]) ;
+            if nargin<3 ; ORD = [1 zeros(1,this.nDims-1)] ; end
+            if nargin<4 ; delta = range(this.localCoordinatesDomain,1)*1e-6 ; end
+            if numel(ORD)~=this.nDims ; error('Wrong derivation order argument (must be [1 nDims])') ; end
+            % Evaluation by a centered 2nd-order finite diff. scheme
+                if all(ORD==0) % No Derivative
+                    DER = this.evalAt(E) ;
+                else % Recursive call
+                    DIM = find(ORD~=0,1,'first') ;
+                    newORD = ORD-sparse(1,DIM,1,1,this.nDims) ;
+                    de = (ORD-newORD).*delta ;
+                    DER = ( this.evalDerivativeAt(E+de,newORD,delta) ...
+                            - this.evalDerivativeAt(E-de,newORD,delta) ...
+                            ) / ( 2 * delta(DIM) ) ;
+                end
+        end
+    end
+    
+
+%% DATA FUNCTIONS
+    methods (Static)
+        function VAL = dataAtIndices(DATA,IND)
+        % return values VAL corresponding to the data DATA queried and node indices IND
+        % IND [...szInd...] (any size, an index<0 is taken as non valid (==NaN))
+        % DATA [nNodes ...szData...]
+        % VAL [szInd szData]
+            szInd = size(IND) ;
+            szData = size(DATA) ;
+            % Reshape the data
+                nNodes = szData(1) ; 
+                szData = szData(:,end) ;
+                DATA = DATA(:,:) ;
+            % Set the values
+                valid = IND>0 & ~(IND>nNodes) ; % NaNs will return false also
+                VAL = NaN([numel(IND) prod(szData)]) ;
+                VAL(valid,:) = DATA(IND(valid),:) ; 
+            % Reshape
+                VAL = reshape(VAL,[szInd szData]) ;
+        end
+        
+        function VAL = meanDataAtIndices(DATA,IND,DIM)
+        % Return the mean of DATA evaluated at indices IND in the dimension DIM
+            if nargin<3 ; DIM = ndims(IND) ; end
+            VAL = mean(pkg.mesh.elements.AbstractElement.dataAtIndices(DATA,IND),DIM,'omitnan') ;
+        end
+    end
+    
+    
+%% PLOT FUNCTIONS
+    methods
+        function H = plot(this,toPlot,varargin)
+        % Handles plot functions
+            if nargin<2 ; toPlot = 'ReferenceElement' ; end
+            if nargin<3 ; varargin = {} ; end
+            switch upper(toPlot)
+                case 'REFERENCEELEMENT'
+                    H = plotReferenceElement(this,varargin{:}) ;
+                case 'SHAPEFUNCTIONS'
+                    H = plotShapeFunctions(this,varargin{:}) ;
+            end
+        end
+        
+        function H = plotReferenceElement(this,ax)
+        % Plot the reference element in a given axes
+            if nargin<2 ; ax = gca ; end
+            h = gobjects(0) ;
+            E = this.localCoordinatesIn3D ;
+            % Faces
+            h(end+1) = patch(ax,'Vertices',E,'Faces',this.Faces,'Tag','Faces') ;
+                h(end).FaceColor = 'w' ;
+                h(end).EdgeColor = 'k' ;
+                h(end).LineWidth = 0.5 ;
+            h(end+1) = hggroup(ax,'Tag','FaceLabels') ;
+                lbl = arrayfun(@(c)['F' num2str(c)],1:this.nFaces,'UniformOutput',false) ;
+                P = this.meanDataAtIndices(E,this.Faces) ;
+                txt = text(ax,P(:,1),P(:,2),P(:,3),lbl,'Parent',h(end),'BackgroundColor','w','edgecolor','k') ;
+            % Edges
+            h(end+1) = patch(ax,'Vertices',E,'Faces',this.Edges,'Tag','Edges') ;
+                h(end).FaceColor = 'none' ;
+                h(end).EdgeColor = 'k' ;
+                h(end).LineWidth = 2 ;
+            h(end+1) = hggroup(ax,'Tag','EdgeLabels') ;
+                lbl = arrayfun(@(c)['E' num2str(c)],1:this.nEdges,'UniformOutput',false) ;
+                P = this.meanDataAtIndices(E,this.Edges) ;
+                txt = text(ax,P(:,1),P(:,2),P(:,3),lbl,'Parent',h(end),'BackgroundColor','w','edgecolor','k') ;
+            % Nodes
+            h(end+1) = patch(ax,'Vertices',E,'Faces',(1:this.nNodes)','Tag','Nodes') ;
+                h(end).FaceColor = 'none' ;
+                h(end).EdgeColor = 'k' ;
+                h(end).LineStyle = 'none' ;
+                h(end).Marker = '.' ;
+                h(end).MarkerSize = 20 ;
+            h(end+1) = hggroup(ax,'Tag','NodeLabels') ;
+                lbl = arrayfun(@(c)['N' num2str(c)],1:this.nNodes,'UniformOutput',false) ;
+                txt = text(ax,E(:,1),E(:,2),E(:,3),lbl,'Parent',h(end),'BackgroundColor','w','edgecolor','k') ;
+            % Put in the same group
+            H = hggroup(ax) ;
+            set(h,'Parent',H) ;
+            if this.nDims>2 ; set(ax,'view',[30 30],'Toolbar',[],'Interactions',[rotateInteraction]) ; end
+        end
+        
+        function H = plotShapeFunctions(this,fig)
+        % Plot the shape functions in the current figure
+            if nargin<2 ; fig = gcf ; end
+            subdiv = 100*ones(1,this.nDims) ; % Number of Subdivisions
+            switch this.nDims % Displayed derivation orders
+                case 1
+                    ORD = [0;1;2] ;
+                case 2
+                    ORD = [0 0 ; 1 0 ; 0 1 ; 2 0 ; 0 2 ; 1 1] ;
+                case 3
+            end
+            % Local coordinates
+                bbox = this.localCoordinatesDomain ;
+                E = arrayfun(@(dim)linspace(bbox(1,dim),bbox(2,dim),subdiv(dim)),1:this.nDims,'UniformOutput',false) ;
+                if numel(E)>1 ; [E{:}] = ndgrid(E{:}) ; end
+                EE = cat(this.nDims+1,E{:}) ;
+            % Figure
+                clf(fig) ;
+                H = gobjects(0) ;
+                ax = gobjects(0) ;
+                lin = gobjects(0) ;
+                srf = gobjects(0) ;
+                ttl = gobjects(0) ;
+             % For each derivation order
+                nOrd = size(ORD,1) ;
+                for oo = 1:nOrd
+                    % Evaluate the shape function derivatives
+                        e = reshape(EE,[],this.nDims) ;
+                        N = this.evalDerivativeAt(e,ORD(oo,:)) ;
+                        NN = reshape(N,[subdiv this.nNodes]) ;
+                    % For each shape function
+                        for nn = 1:this.nNodes
+                            % Init axes
+                                ax(end+1) = axes ;
+                                ax(end).OuterPosition = [(nn-1)/this.nNodes 1-oo/nOrd 1/this.nNodes 1/nOrd] ;
+                            % Plot the reference element
+                                H = this.plot('ReferenceElement',ax(end)) ;
+                            % Remove the labels
+                                delete(findobj(H,'type','text')) ;
+                            % Set faces transparent
+                                set(findobj(H,'type','patch'),'FaceColor','none')
+                            % Highlight the current node only
+                                set(findobj(H,'type','patch','-not','marker','none'),'Faces',nn)
+                            % Highlight the current point
+                                switch this.nDims
+                                    case 1
+                                        lin(end+1) = plot(ax(end),EE(:,:,1),NN(:,nn)) ;
+                                    case 2
+                                        srf(end+1) = surf(ax(end),EE(:,:,1),EE(:,:,2),NN(:,:,nn),NN(:,:,nn)) ;
+                                    case 3
+                                    otherwise % ???
+                                end
+                            % Add a title
+                                ttl(end+1) = title(ax(end),['N_{' num2str(nn) '}']) ;
+                                if any(ORD(oo,:)) 
+                                    ttl(end).String = [ttl(end).String(1:end-1) ...
+                                                        ',' sprintf('%i',repelem(1:this.nDims,1,ORD(oo,:))) ...
+                                                        ttl(end).String(end)] ; 
+                                end 
+                        end
+                end
+            % Set Common properties
+                set(ax,'FontSize',12,'TickLabelInterpreter','none') ;
+                if this.nDims<2
+                    set(ax,'view',[0 90],'Toolbar',[],'Interactions',[]) ;
+                else
+                    set(ax,'view',[30 30],'Toolbar',[],'Interactions',[rotateInteraction]) ;
+                    set(srf,'FaceColor','interp','EdgeColor','none')
+                    fig.UserData.hlink = linkprop(ax,'view') ;
+                colormap(jet(11)) ;
+                end
+                set(ttl,'Interpreter','tex','units','normalized','position',[0.5 0.5 0]) ;
+        end
+    end
+    
+end
+
