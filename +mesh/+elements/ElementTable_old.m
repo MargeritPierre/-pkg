@@ -4,19 +4,17 @@ classdef ElementTable
 % Contains all connectivities of the mesh
     
 %% ELEMENT INFORMATIONS
+<<<<<<< HEAD:+mesh/+elements/ElementTable_old.m
 properties
     % Unique list of element types
+=======
+properties (AbortSet)
+    % Type of elements [nElems 1]
+>>>>>>> parent of 420de96... New Commit:+mesh/+elements/ElementTable.asv
     Types pkg.mesh.elements.AbstractElement
-    % Element-node connectivities [nElems nMaxNodeByElem+1]
+    % Element-node connectivities [nElems nMaxNodeByElem]
     % Zeros denote invalid indices
-    % Format : [elmtTypeIdx NodesIndices]
     Indices uint32
-end
-properties (Dependent)
-    TypeIdx uint32 % Element type indices (wrt this.Types)
-    NodeIdx uint32 % Element Node indices (wrt mesh nodes or element nodes)
-end
-methods
 end
 
 %% TABLE INFORMATIONS
@@ -24,13 +22,13 @@ methods
     % Number of elements in the table
     function val = nElems(this) ;  [val,~] = cellfun(@size,{this.Indices}) ; end
     % Number of nodes in each element
-    function val = nNodes(this) ; val = sum(this.NodeIdx>0,2) ; end
+    function val = nNodes(this) ; val = sum(this.Indices>0,2) ; end
     % Maximum number of nodes by element
-    function val = nMaxNodesByElem(this) ;  [~,val] = cellfun(@size,{this.Indices}) ; val = val-1 ; end % Minus one because of the presence of TypeIdx
+    function val = nMaxNodesByElem(this) ;  [~,val] = cellfun(@size,{this.Indices}) ; end
     % Unique list of node indices
-    function val = uniqueNodeIdx(this) ; val = unique(this.NodeIdx(this.NodeIdx~=0)) ; end
+    function val = uniqueIndices(this) ; val = unique(this.Indices(this.Indices~=0)) ; end
     % Unique list of element types
-    %function [types,elmtIdx] = uniqueTypes(this) ; [types,~,elmtIdx] = unique(this.Types) ; end
+    function [types,elmtIdx] = uniqueTypes(this) ; [types,~,elmtIdx] = unique(this.Types) ; end
 end
 
 %% CONSTRUCTOR
@@ -60,97 +58,85 @@ end
 
 %% SET / GET interface
 methods
-    function idx = get.TypeIdx(this)
-    % Get element type indices
-        idx = this.NodeIdx(:,1) ;
-    end
-    
-    function idx = get.NodeIdx(this)
-    % Get element node indices
-        idx = this.NodeIdx(:,2:end) ;
-    end
-    
-    function this = set.TypeIdx(this,idx)
-    % Set element type indices
-        if numel(idx)~=this.nElems ; error('The provided indices must be of size [nElems 1]') ; end
-        if any(idx>numel(this.Types)) ; error('The indices must range in the number of available element types') ; end 
-        this.Indices = [idx(:) this.NodeIdx] ;
-    end
-    
-    function this = set.NodeIdx(this,idx)
-    % Set element node indices
-        if size(idx,1)~=this.nElems ; error('The provided list of indices must have [nElems] rows') ; end
-        this.Indices = [this.TypeIdx idx(:,:)] ;
-    end
-    
     function this = set.Types(this,types)
-    % Set the list of unique elements
-    % Unique list
-        [this.Types,~,typeIdx] = unique(types(:)) ;
-    % Change the type index list
-        if numel(typeIdx)==this.nElems % One type by element, already ok
-            this.TypeIdx = typeIdx ;
-        else % We have to find which type fit with the given element node indices
-            this.TypeIdx = this.assignElementTypeIdx() ;
+    % Set the Types property
+        this.Types = types(:) ;
+    % Check data consistency
+        if numel(types)>this.nElems
+        % Too many types, add empty elements
+            this.Indices(end+1:numel(types),:) = 0 ;
+        elseif numel(types)<this.nElems 
+        % Not enough types, try to find each type by node number
+            this = this.assignElementTypes ;
         end
     end
     
     function this = set.Indices(this,indices)
     % Set the Indices property
-    % Check if element type indices are valid
-        % In the right range
-            valid = indices(:,1)>0 & indices(:,1)<numel(this.Types) ;
-        % The number of node indices is correct
-            nNodes = reshape([this.Types.nNodes],[],1) ;
-            valid(valid) = valid(valid) & sum(indices(valid,2:end)>0,2)==nNodes(indices(valid,1)) ;
-    % Auto assign type indices if needed
-        if any(~valid) 
-            indices(~valid,1) = this.assignElementTypeIdx(indices(~valid,2:end)) ;
-        end
-    % Set
         this.Indices = indices(:,:) ;
+    % Check data consistency
+        if numel(this.Types)==0
+        % No element type has been provided, fill with abstract elements
+            %this.Types(1:this.nElems) = pkg.mesh.elements.EmptyElement ;
+            this.Types = repmat(pkg.mesh.elements.EmptyElement,[this.nElems 1]) ;
+        elseif this.nElems>numel(this.Types)
+        % Not enough element types are provided
+        % assign auto element types on missing lines only !
+            types = this.findElementTypes ;
+            indMissing = numel(this.Types)+1:this.nElems ;
+            this.Types(indMissing) = types(indMissing) ;
+        elseif this.nElems<numel(this.Types) 
+        % Too many elements are present, remove the ones that are not used
+            this.Types = this.Types(1:this.nElems) ;
+        end
+    end
+    
+    function types = findElementTypes(this)
+    % Return the list of element types corresponding to the current list of
+    % Indices. Use the number of nodes by element. 
+    % Unique element type list
+        types = this.uniqueTypes ; 
+    % Number of nodes in each element type
+        nNodesInElements = [types.nNodes] ;
+        if numel(nNodesInElements)~=numel(unique(nNodesInElements))
+            warning('Some elements types have the same node number: automatic type assignment is ambiguous.') ;
+        end
+    % Number of nodes in each line of the node indices
+        nNodes = this.nNodes ;
+    % Initialize with empty elements by default
+        newTypes = repmat(pkg.mesh.elements.EmptyElement,[this.nElems 1]) ;
+     % Assign with the count the number of nodes
+        for tt = 1:numel(types)
+            newTypes(nNodesInElements(tt)==nNodes) = types(tt) ;
+        end
+        types = newTypes ;
     end
 end
 
 
 %% CONNECTIVITY RETRIEVING
 methods
-%     function [edges,ie] = uniqueEdges(this)
-%     % Return the list of unique edges
-%     end
+    function [edges,ie] = uniqueEdges(this)
+    % Return the list of unique edges
+    end
     
-%     function edges = allEdges(this)
-%     % Return the complete list of edges (with duplicates)
-%     % Build Edge Table
-%         edges = [this.Types.Edges] ; % Local indices (ELEMENT node number)
-%     % Globalize indices
-%         nEdges = [this.Types.nEdges] ; % Edges by element
-%         edgElem = repelem(1:this.nElems,nEdges) ; % Element associated to each edge
-%         edgElem = repmat(edgElem(:),edges.nMaxNodesByElem) ;
-%         valid = edges.Indices>0 ; % Valid edge indices
-%         iii = sub2ind(size(this.Indices),edgElem(valid),edges.Indices(valid)) ;
-%         edges.Indices(valid) = this.Indices(iii) ; % Global indices (MESH node number)
-%     end
+    function edges = allEdges(this)
+    % Return the complete list of edges (with duplicates)
+    % Build Edge Table
+        edges = [this.Types.Edges] ; % Local indices (ELEMENT node number)
+    % Globalize indices
+        nEdges = [this.Types.nEdges] ; % Edges by element
+        edgElem = repelem(1:this.nElems,nEdges) ; % Element associated to each edge
+        edgElem = repmat(edgElem,edges.nMax
+        valid = edges.Indices>0 ; % Valid edge indices
+        iii = sub2ind(size(this.Indices),edgElem(valid),edges.Indices(valid)) ;
+        edges.Indices(valid) = this.Indices(edgElem(valid),edges.Indices(valid)) ; % Global indices (MESH node number)
+    end
 end
 
 
 %% INDICES MANIPULATION
 methods
-    function typeIdx = assignElementTypeIdx(this,nodeIdx,types)
-    % Return the list of element types indices corresponding to a list of Node indices. 
-    % Uses the number of nodes by element. 
-        if nargin<2 ; nodeIdx = this.NodeIdx ; end
-        if nargin<3 ; types = this.Types ; end
-    % Number of nodes in each available element type
-        nNodeInType = [types.nNodes] ;
-        if numel(nNodeInType)~=numel(unique(nNodeInType))
-            warning('Some elements types have the same node number: automatic type assignment is ambiguous.') ;
-        end
-    % Find new TypeIdx
-        nValidNodeIdx = sum(nodeIdx>0,2) ;
-        [~,typeIdx] = ismember(nValidNodeIdx,nNodeInType) ;
-    end
-    
     function indices = paddedIndices(this,N,indices)
     % Pad the table indices with zeros to match a given N
         if nargin<3 ; indices = this.Indices ; end
@@ -186,7 +172,7 @@ methods
     function [table,ia] = unique(this)
     % Return a table of UNIQUE elements
         [~,ie,ia] = unique(sort(this.Indices,2),'rows','stable') ;
-        table = pkg.mesh.elements.ElementTable('Types',this.Types,'Indices',this.Indices(ie,:)) ;
+        table = pkg.mesh.elements.ElementTable('Types',this.Types(ie),'Indices',this.Indices(ie,:)) ;
     end
 end
 
@@ -225,8 +211,7 @@ methods
     % Convert to tables
         tables = builtin('cat',1,varargin{:}) ; %cellfun(@pkg.mesh.elements.ElementTable,varargin) ;
     % Concatenate Element Types
-        types = {tables.Types} ;
-        nTypes = cellfun(@numel,types) ;
+        types = cat(1,tables.Types) ;
     % Concatenate Indices
         indices = catIndices(tables) ;
     % Create the table
