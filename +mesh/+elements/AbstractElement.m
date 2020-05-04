@@ -71,35 +71,6 @@ classdef (Abstract) AbstractElement < handle & matlab.mixin.Heterogeneous
         end
     end
     
-
-%% DATA FUNCTIONS
-    methods (Static)
-        function VAL = dataAtIndices(DATA,IND)
-        % return values VAL corresponding to the data DATA queried and node indices IND
-        % IND [...szInd...] (any size, an index<0 is taken as non valid (==NaN))
-        % DATA [nNodes ...szData...]
-        % VAL [szInd szData]
-            szInd = size(IND) ;
-            szData = size(DATA) ;
-            % Reshape the data
-                nNodes = szData(1) ; 
-                szData = szData(:,end) ;
-                DATA = DATA(:,:) ;
-            % Set the values
-                valid = IND>0 & ~(IND>nNodes) ; % NaNs will return false also
-                VAL = NaN([numel(IND) prod(szData)]) ;
-                VAL(valid,:) = DATA(IND(valid),:) ; 
-            % Reshape
-                VAL = reshape(VAL,[szInd szData]) ;
-        end
-        
-        function VAL = meanDataAtIndices(DATA,IND,DIM)
-        % Return the mean of DATA evaluated at indices IND in the dimension DIM
-            if nargin<3 ; DIM = ndims(IND) ; end
-            VAL = mean(pkg.mesh.elements.AbstractElement.dataAtIndices(DATA,IND),DIM,'omitnan') ;
-        end
-    end
-    
     
 %% PLOT FUNCTIONS
     methods
@@ -127,7 +98,7 @@ classdef (Abstract) AbstractElement < handle & matlab.mixin.Heterogeneous
 %                 h(end).LineWidth = 0.5 ;
             h(end+1) = hggroup(ax,'Tag','FaceLabels') ;
                 lbl = arrayfun(@(c)['F' num2str(c)],1:this.nFaces,'UniformOutput',false) ;
-                P = this.meanDataAtIndices(E,this.Faces.NodeIdx) ;
+                P = this.Faces.meanDataAtIndices(E) ;
                 txt = text(ax,P(:,1),P(:,2),P(:,3),lbl,'Parent',h(end),'BackgroundColor','w','edgecolor','k') ;
             % Edges
             h(end+1) = patch(ax,'Vertices',E,'Faces',this.Edges.NodeIdx,'Tag','Edges') ;
@@ -136,7 +107,7 @@ classdef (Abstract) AbstractElement < handle & matlab.mixin.Heterogeneous
                 h(end).LineWidth = 2 ;
             h(end+1) = hggroup(ax,'Tag','EdgeLabels') ;
                 lbl = arrayfun(@(c)['E' num2str(c)],1:this.nEdges,'UniformOutput',false) ;
-                P = this.meanDataAtIndices(E,this.Edges.NodeIdx) ;
+                P = this.Edges.meanDataAtIndices(E) ;
                 txt = text(ax,P(:,1),P(:,2),P(:,3),lbl,'Parent',h(end),'BackgroundColor','w','edgecolor','k') ;
             % Nodes
             h(end+1) = patch(ax,'Vertices',E,'Faces',(1:this.nNodes)','Tag','Nodes') ;

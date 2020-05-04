@@ -1,6 +1,7 @@
-function this = CatmullClark(this,iter)
+function mesh = CatmullClark(this,iter)
 % Catmull-Clark SURFACE mesh subdivision
 % see https://en.wikipedia.org/wiki/Catmull%E2%80%93Clark_subdivision_surface
+if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
 
 if nargin<2 ; iter = 1 ; end
 
@@ -8,44 +9,44 @@ if nargin<2 ; iter = 1 ; end
 for it = 1:iter
     
     % Faces circumcenters
-        Fc = this.circumCenters(this.Faces) ;
+        Fc = mesh.circumCenters(mesh.Faces) ;
     % Edges circumcenters
-        Ec = this.circumCenters(this.Edges) ;
+        Ec = mesh.circumCenters(mesh.Edges) ;
     % Add the connected face circumcenters
-        face2edge = this.face2edge('mean') ;
+        face2edge = mesh.face2edge('mean') ;
         Ep = Ec ; %+ face2edge*Fc ;
     % New original nodes position
         % Average of each connected face circumcenter
-            face2nod = this.face2nod('mean') ;
-            N = sum(face2nod,2) ;
-            Fn = (face2nod*Fc)./N ;
+            face2node = mesh.face2node('mean') ;
+            N = sum(face2node,2) ;
+            Fn = (face2node*Fc)./N ;
         % Average of each connected edge circumcenter
-            En = (this.edge2nod*Ec)./N ;
+            En = (mesh.edge2node*Ec)./N ;
         % New point
-            Pn = this.Nodes ; %(Fn+2*En+(N-3).*this.Nodes)./N ;
+            Pn = mesh.X.Values ; %(Fn+2*En+(N-3).*this.X.Values)./N ;
     % Indices of edges in each face
-        [~,FaceEdges] = this.listEdges(this.Elems) ;
+        [~,FaceEdges] = mesh.Edges.NodeIdx ;
     % Build the new mesh
         elems = NaN(0,4) ;
-        for pp = 1:size(this.Elems,2)
-            if pp==size(this.Elems,2) 
+        for pp = 1:size(mesh.Elems,2)
+            if pp==size(mesh.Elems,2) 
                 %lastInd = FaceEdges(sub2ind(size(FaceEdges),(1:this.nElems)',sum(~isnan(this.Elems),2))) ;
-                lastInd = FaceEdges(sub2ind(size(FaceEdges),(1:this.nElems)',ones(this.nElems,1))) ; 
+                lastInd = FaceEdges(sub2ind(size(FaceEdges),(1:mesh.nElems)',ones(mesh.nElems,1))) ; 
             else 
                 lastInd = FaceEdges(:,pp+1) ; 
             end
             elems = [ elems ; ...
-                        this.Elems(:,pp) ...
-                        FaceEdges(:,pp)+this.nNodes ...
-                        (1:this.nElems)'+this.nNodes+this.nEdges ...
-                        lastInd(:)+this.nNodes ...
+                        mesh.Elems(:,pp) ...
+                        FaceEdges(:,pp)+mesh.nNodes ...
+                        (1:mesh.nElems)'+mesh.nNodes+mesh.nEdges ...
+                        lastInd(:)+mesh.nNodes ...
                         ] ;
         end
     % Cull non-quads elems
         elems(any(isnan(elems),2),:) = [] ;
     % Set the mesh
-        this.Nodes = cat(1,Pn,Ep,Fc) ;
-        this.Elems = elems ;
+        mesh.Nodes = cat(1,Pn,Ep,Fc) ;
+        mesh.Elems = elems ;
         
 end
         

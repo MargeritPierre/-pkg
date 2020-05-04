@@ -97,13 +97,13 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         function update(this)
         % Object updating function
             % Patch
-                this.Patches.Vertices = this.Mesh.Nodes ;
-                this.Patches.Faces = this.Mesh.Faces ;
+                this.Patches.Vertices = this.Mesh.X.Values ;
+                this.Patches.Faces = this.Mesh.Edges.indicesWithNaNs ;
             % Boundary curves
                 crv = this.Mesh.boundaryCurves ;
-                nans = isnan(crv) ;
+                nans = isnan(crv) | crv==0 ;
                 crv(nans) = 1 ;
-                crv = this.Mesh.Nodes(crv,:) ;
+                crv = this.Mesh.X.Values(crv,:) ;
                 crv(nans,:) = NaN ;
                 this.Lines.XData = crv(:,1) ;
                 this.Lines.YData = crv(:,2) ;

@@ -71,24 +71,10 @@ end
 
 %% DATA HANDLING
 methods
-    function DATA = valuesAtIndices(IND,VAL)
-    % return data DATA corresponding to the values VAL queried at node indices IND
-    % IND [szInd] (any size, an index<0 is taken as non valid (==NaN))
-    % DATA [nNodes [szVal]]
-    % VAL [[szInd] [szVal]]
-        if nargin<2 ; VAL = this.Values; end
-        szInd = size(IND) ;
-        szVal = size(VAL) ;
-        % Reshape the data
-            nNodes = szVal(1) ; 
-            szVal = szVal(:,end) ;
-            VAL = VAL(:,:) ;
-        % Set the values
-            valid = IND>0 & ~(IND>nNodes) ; % NaNs will return false also
-            DATA = NaN([numel(IND) prod(szVal)]) ;
-            DATA(valid,:) = VAL(IND(valid),:) ; 
-        % Reshape
-            DATA = reshape(DATA,[szInd szVal]) ;
+    function DATA = valuesAtIndices(IND)
+    % return data DATA corresponding to the function values at node indices IND
+    % See pkg.data.meanDataAtIndices
+        DATA = pkg.data.dataAtIndices(this.Values,IND) ;
     end
 end
 

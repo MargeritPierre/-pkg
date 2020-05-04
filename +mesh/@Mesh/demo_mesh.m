@@ -8,7 +8,7 @@
     import pkg.mesh.elements.*
     
     nNodes = 10000000 ; % Number of nodes
-    nElems = 3 ; % Number of random elements
+    nElems = 10000 ; % Number of random elements
     elemType = LagrangeElement('quad',1) ; % Element type (only on type supported here)
     
     nodeIndices = randi([1 nNodes],[nElems elemType.nNodes]) ; % Indices of nodes connected to each element

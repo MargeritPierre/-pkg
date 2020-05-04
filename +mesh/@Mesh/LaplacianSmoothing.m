@@ -1,7 +1,8 @@
-function this = LaplacianSmoothing(this,lmbda,iterations,tol)
+function mesh = LaplacianSmoothing(this,lmbda,iterations,tol)
 %Apply Laplacian smoothing to a pkg.mesh.Mesh
 % lmbda is a ratio btw 0 and 1; can be [lin lout], to give a different
 % value for interior and boundary nodes
+if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
 
 % Format inputs
     % Lambda
@@ -13,30 +14,30 @@ function this = LaplacianSmoothing(this,lmbda,iterations,tol)
 
 % Constant objects
     % Boundary nodes
-        bndNod = full(this.boundaryNodes) ;
+        bndNod = full(mesh.boundaryNodes) ;
         LMBDA = ~bndNod(:).*lmbda(1) + bndNod(:).*lmbda(2) ;
     % Mean over attached elements
-        elem2nod = this.elem2nod ;
-        valance = full(sum(elem2nod,2)) ;
+        elem2node = mesh.elem2node ;
+        valance = full(sum(elem2node,2)) ;
     % Approximate mesh size
-        sz = norm(range(this.Nodes,1)) ;
+        sz = norm(range(mesh.X.Values,1)) ;
 
 % LOOP
     it = 0 ;
     dp = Inf ;
     while it<iterations && dp/sz>tol
         % Forward Smoothing
-            Pc = this.circumCenters() ;
-            Pt = (elem2nod*Pc)./valance ;
-            dPf = Pt-this.Nodes ;
+            Pc = mesh.circumCenters() ;
+            Pt = (elem2node*Pc)./valance ;
+            dPf = Pt-mesh.X.Values ;
             dPf = dPf.*LMBDA ;
-            this.Nodes = this.Nodes + dPf ;
+            mesh.X.Values = mesh.X.Values + dPf ;
         % Backward Smoothing
-            Pc = this.circumCenters() ;
-            Pt = (elem2nod*Pc)./valance ;
-            dPb = Pt-this.Nodes ;
+            Pc = mesh.circumCenters() ;
+            Pt = (elem2node*Pc)./valance ;
+            dPb = Pt-mesh.X.Values ;
             dPb = dPb.*LMBDA ;
-            this.Nodes = this.Nodes - dPb ;
+            mesh.X.Values = mesh.X.Values - dPb ;
         % Norm of displacement
             dp = max(sqrt(sum((dPf-dPb).^2,2))) ;
             it = it+1 ;

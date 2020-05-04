@@ -156,44 +156,61 @@ end
 
 %% CONNECTIVITY RETRIEVING
 methods
-    function [faces,elem2face] = uniqueFaces(this)
-    % Return the list of unique faces
-        [faces,elem2face] = getTableOfUnique(this,'Faces') ;
+    
+    function M = sparse(this,values)
+    % Return a sparse matrix containing values of different kinds
+        if nargin<2 ; values = 'indices' ; end
+        switch values
+            case 'logical' % M(ii,jj) = true if ismember(ii,this.NodeIdx(jj,:))
+                vvv = true(size(this.NodeIdx)) ;
+            case 'indices' % M(ii,jj) = find(this.NodeIdx(jj,:)==ii) ;
+                vvv = repmat(1:this.nMaxNodesByElem,[this.nElems 1]) ;
+            case 'mean' % Used to compute the mean of nodal values on each element
+                vvv =  true(size(this.NodeIdx)) ;
+            otherwise % User-custom values
+                vvv = values(:) + zeros(numel(this.NodeIdx)) ;
+        end
+    % Integers are the indice of the node in the elem list
+        valid = this.NodeIdx>0 ;
+        eee = repmat((1:this.nElems)',[1 this.nMaxNodesByElem]) ;
+        M = sparse(double(this.NodeIdx(valid)),eee(valid),vvv(valid)) ;
+    % Eventually compute the mean
+        if strcmp(values,'mean') ; M = M.*(1./sum(M,2)) ; end
     end
     
-    function [faces,faceElmt] = allFaces(this)
-    % Return the complete table of faces (with duplicates)
-        [faces,faceElmt] = getTableOf(this,'Faces') ;
-    end
-    
-    function [edges,elem2edge] = uniqueEdges(this)
-    % Return the list of unique edges
-        [edges,elem2edge] = getTableOfUnique(this,'Edges') ;
-    end
-    
-    function [edges,edgElmt] = allEdges(this)
-    % Return the complete table of edges (with duplicates)
-        [edges,edgElmt] = getTableOf(this,'Edges') ;
+    function M = contains(this,features)
+    % Return a sparse matrix of logical values
+    % M(i,j) = true if this(j,:) contains features(i,:)
+    % The test uses the number of shared node indices
+        nNodes = [0 features.Types.nNodes] ;
+        nNodes = nNodes(features.TypeIdx+1) ;
+    % Shared number of nodes between tables (sparse matrix)
+        M = logical(features.sparse)'*logical(this.sparse) ;
+    % Nonzeros
+        [ii,jj,vv] = find(M) ;
+    % Contains
+        bb = vv(:)==reshape(nNodes(ii),[],1) ;
+        M = sparse(ii(bb),jj(bb),true,features.nElems,this.nElems) ;
     end
     
     function [table,elem2feat] = getTableOfUnique(this,features)
     % Return the table of unique element features (with duplicates)
     % featIdx returns the feature indices associated to each element in the
     % list
-        [table,featElmt] = getTableOf(this,features) ;
+        [table,featElmt,featIdxForElmt] = getTableOf(this,features) ;
         [table,ie] = unique(table) ;
         if nargout<2 ; return ; end
-        elem2feat = sparse(ie(:),featElmt(:),true,table.nElems,this.nElems) ;
+        elem2feat = sparse(ie(:),featElmt(:),featIdxForElmt(:),table.nElems,this.nElems) ;
     end
     
-    function [table,featElmt] = getTableOf(this,features)
+    function [table,featElmt,featIdxInElmt] = getTableOf(this,features)
     % Return the complete table of element features (with duplicates)
     % Features are 'Faces' or 'Edges'
         if nargin<2 || ~ismember(features,{'Faces','Edges'})
             error('Wrong feature argument') ;
         end
     % Init feature table with types
-        table = [this.Types.(features)] ;
+        table = pkg.mesh.elements.ElementTable([this.Types.(features)]) ;
     % Feature hierarchy
         % Features counts
             nFeatInElemType = [0 this.Types.(['n' features])] ; % (includes typeIdx=0)
@@ -201,8 +218,8 @@ methods
         % Element associated to each feature
             featElmt = repelem(1:this.nElems,nFeatInElemType(this.TypeIdx+1)) ;
         % Feature index in the parent element
-            featIdxInElem = arrayfun(@colon,nFeatInElemType*0 + 1,nFeatInElemType,'UniformOutput',false) ;
-            featIdxInElem = [featIdxInElem{this.TypeIdx+1}] ;
+            featIdxInElmt = arrayfun(@colon,nFeatInElemType*0 + 1,nFeatInElemType,'UniformOutput',false) ;
+            featIdxInElmt = [featIdxInElmt{this.TypeIdx+1}] ;
         % Feature index in the current table
             featIdxInTable = arrayfun(@colon,nFeatTypesInPrevElems - nFeatInElemType + 1,nFeatTypesInPrevElems,'UniformOutput',false) ;
             featIdxInTable = [featIdxInTable{this.TypeIdx+1}] ;
@@ -216,16 +233,43 @@ methods
         % Global indices (MESH node number)
             nodeIdx(valid) = this.NodeIdx(iii) ;
     % "Global" type indices. Local typeIdx are forced to be valid (as defined in elements classes)
-        typeIdx = zeros(size(nodeIdx,1),1,'uint32') ;
-        typeIdx = table.TypeIdx(featIdxInElem+nFeatTypesInPrevElems(this.TypeIdx(featElmt))) ;
+        typeIdx = table.TypeIdx(featIdxInElmt+nFeatTypesInPrevElems(this.TypeIdx(featElmt))) ;
     % Set the table
-        table.Indices = [typeIdx nodeIdx] ;
+        table.Indices = [typeIdx(:) nodeIdx] ;
+    end
+end
+
+
+%% DATA PROJECTION ON INDICES
+methods
+    function indices = indicesWithNaNs(this)
+    % Return node indices with NaNs in place of zero's
+        indices = double(this.NodeIdx) ;
+        indices(indices<=0) = NaN ;
+    end
+    
+    function VAL = dataAtIndices(this,DATA)
+    % Return values VAL corresponding to the data DATA queried at this.NodeIdx
+    % See pkg.data.dataAtIndices
+        VAL = pkg.data.dataAtIndices(DATA,this.NodeIdx) ;
+    end
+    
+    function VAL = meanDataAtIndices(this,DATA,DIM)
+    % Return values VAL corresponding to the mean along the dimension DIM 
+    % of data DATA queried at this.NodeIdx
+    % See pkg.data.meanDataAtIndices
+        if nargin<3
+            VAL = pkg.data.meanDataAtIndices(DATA,this.NodeIdx) ;
+        else
+            VAL = pkg.data.meanDataAtIndices(DATA,this.NodeIdx,DIM) ;
+        end
     end
 end
 
 
 %% INDICES MANIPULATION
 methods
+    
     function typeIdx = assignElementTypeIdx(this,nodeIdx,types)
     % Return the list of element types indices corresponding to a list of Node indices. 
     % Uses the number of nodes by element. 
@@ -239,13 +283,6 @@ methods
     % Find new TypeIdx
         nValidNodeIdx = sum(nodeIdx>0,2) ;
         [~,typeIdx] = ismember(nValidNodeIdx,nNodeInType) ;
-    end
-    
-    function indices = paddedIndices(this,N,indices)
-    % Pad the table indices with zeros to match a given N
-        if nargin<3 ; indices = this.Indices ; end
-        N0 = size(indices,2) ;
-        if N0~=N ; indices = [indices(:,1:min(N0,N)) zeros(this.nElems,N-N0,'uint32')] ; end
     end
     
     function [indices,iT] = catIndices(tables)
@@ -397,8 +434,5 @@ methods
         table = pkg.mesh.elements.ElementTable('Types',this.Types,'Indices',repmat(this.Indices,[nRep 1])) ;
     end
 end
-
-
-%% CONNECTIVITY LISTS
 
 end
