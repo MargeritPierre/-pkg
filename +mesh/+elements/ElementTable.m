@@ -4,27 +4,33 @@ classdef ElementTable
 % Contains all connectivities of the mesh
     
 %% ELEMENT INFORMATIONS
-properties (AbortSet)
-    % Unique list of element types
+properties
+    % List of element types
     Types pkg.mesh.elements.AbstractElement
     % Element-node connectivities [nElems nMaxNodeByElem+1]
     % Zeros denote invalid indices
-    % Format : [elmtTypIdx NodesIndices]
+    % Format : [elmtTypeIdx NodesIndices]
     Indices uint32
+end
+properties (Dependent)
+    TypeIdx uint32 % Element type indices (wrt this.Types)
+    NodeIdx uint32 % Element Node indices (wrt mesh nodes or element nodes)
+end
+methods
 end
 
 %% TABLE INFORMATIONS
 methods  
     % Number of elements in the table
     function val = nElems(this) ;  [val,~] = cellfun(@size,{this.Indices}) ; end
+    % Number of elements in the table
+    function val = nTypes(this) ;  val = cellfun(@numel,{this.Types}) ; end
     % Number of nodes in each element
-    function val = nNodes(this) ; val = sum(this.Indices>0,2) ; end
+    function val = nNodes(this) ; val = sum(this.NodeIdx>0,2) ; end
     % Maximum number of nodes by element
-    function val = nMaxNodesByElem(this) ;  [~,val] = cellfun(@size,{this.Indices}) ; end
+    function val = nMaxNodesByElem(this) ;  [~,val] = cellfun(@size,{this.Indices}) ; val = val-1 ; end % Minus one because of the presence of TypeIdx
     % Unique list of node indices
-    function val = uniqueIndices(this) ; val = unique(this.Indices(this.Indices~=0)) ; end
-    % Unique list of element types
-    function [types,elmtIdx] = uniqueTypes(this) ; [types,~,elmtIdx] = unique(this.Types) ; end
+    function val = uniqueNodeIdx(this) ; val = unique(this.NodeIdx(this.NodeIdx~=0)) ; end
 end
 
 %% CONSTRUCTOR
@@ -38,7 +44,7 @@ methods
                 case 'pkg.mesh.elements.ElementTable'
                     this = data ;
                 otherwise
-                    this = pkg.mesh.elements.ElementTable('Indices',varargin{1}) ;
+                    this = pkg.mesh.elements.ElementTable('NodeIdx',varargin{1}) ;
             end
         elseif mod(nargin,2)==1 % Odd number of arguments
             error('Wrong number of arguments') ;
@@ -54,85 +60,187 @@ end
 
 %% SET / GET interface
 methods
-    function this = set.Types(this,types)
-    % Set the Types property
-        this.Types = types(:) ;
-    % Check data consistency
-        if numel(types)>this.nElems
-        % Too many types, add empty elements
-            this.Indices(end+1:numel(types),:) = 0 ;
-        elseif numel(types)<this.nElems 
-        % Not enough types, try to find each type by node number
-            this = this.assignElementTypes ;
+    function idx = get.TypeIdx(this)
+    % Get element type indices
+        if isempty(this.Indices)
+            idx = [] ;
+        else
+            idx = this.Indices(:,1) ;
         end
+    end
+    
+    function idx = get.NodeIdx(this)
+    % Get element node indices
+        if isempty(this.Indices)
+            idx = [] ;
+        else
+            idx = this.Indices(:,2:end) ;
+        end
+    end
+    
+    function this = set.TypeIdx(this,idx)
+    % Set element type indices cannot change the number of elements)
+        if numel(idx)~=this.nElems ; error('The provided indices must be of size [nElems 1]') ; end
+        if any(idx>numel(this.Types)) ; error('The indices must range in the number of available element types') ; end 
+        this.Indices = [idx(:) this.NodeIdx] ;
+    end
+    
+    function this = set.NodeIdx(this,idx)
+    % Set element node indices (CAN change the number of elements)
+        if size(idx,1)==this.nElems % nothing to worry about
+            this.Indices = [this.TypeIdx idx(:,:)] ;
+        else % the number of elements change, clear the element types indices (that will be automatically detected)
+            this.Indices = [zeros(size(idx,1),1,'uint32') idx(:,:)] ;
+        end
+    end
+    
+    function this = set.Types(this,types)
+    % Set the list of elements
+    % Change the type index list
+        types = types(:) ;
+        if this.nElems==0 % Do nothing, no elements in the list
+            this.Types = types(:) ;
+            return ;
+        elseif numel(types)==this.nElems % One type by element, already ok
+            typeIdx = 1:numel(types) ;
+        else % We have to find which type fit with the given element node indices
+            % Try to find the old types in the new types
+                [~,indOldInNewTypes] = ismember(this.Types,types) ;
+                valid = this.TypeIdx>0 ;
+                valid(valid) = valid(valid) & indOldInNewTypes(this.TypeIdx(valid))>0 ;
+            % Assign type indices related to found old types
+                typeIdx = zeros(this.nElems,1,'uint32') ;
+                typeIdx(valid) = indOldInNewTypes(this.TypeIdx(valid)) ;
+            % Auto assign non-found types
+                if any(~valid)
+                    typeIdx(~valid) = this.assignElementTypeIdx(this.NodeIdx(~valid,:),types) ;
+                end
+        end
+        this.Types = types ;
+        this.TypeIdx = typeIdx ;
     end
     
     function this = set.Indices(this,indices)
     % Set the Indices property
-        this.Indices = indices(:,:) ;
-    % Check data consistency
-        if numel(this.Types)==0
-        % No element type has been provided, fill with abstract elements
-            %this.Types(1:this.nElems) = pkg.mesh.elements.EmptyElement ;
-            this.Types = repmat(pkg.mesh.elements.EmptyElement,[this.nElems 1]) ;
-        elseif this.nElems>numel(this.Types)
-        % Not enough element types are provided
-        % assign auto element types on missing lines only !
-            types = this.findElementTypes ;
-            indMissing = numel(this.Types)+1:this.nElems ;
-            this.Types(indMissing) = types(indMissing) ;
-        elseif this.nElems<numel(this.Types) 
-        % Too many elements are present, remove the ones that are not used
-            this.Types = this.Types(1:this.nElems) ;
+        if isempty(indices) ; this.Indices = [] ; return ; end 
+    % Check if element type indices are valid
+        % In the right range
+            valid = indices(:,1)>0 & indices(:,1)<=numel(this.Types) ;
+        % The number of node indices is correct
+            nNodes = reshape([this.Types.nNodes],[],1) ;
+            valid(valid) = valid(valid) & sum(indices(valid,2:end)>0,2)==nNodes(indices(valid,1)) ;
+    % Auto assign type indices if needed
+        if any(~valid) 
+            indices(~valid,1) = this.assignElementTypeIdx(indices(~valid,2:end)) ;
         end
+    % Set
+        this.Indices = indices ;
     end
-    
-    function types = findElementTypes(this)
-    % Return the list of element types corresponding to the current list of
-    % Indices. Use the number of nodes by element. 
-    % Unique element type list
-        types = this.uniqueTypes ; 
-    % Number of nodes in each element type
-        nNodesInElements = [types.nNodes] ;
-        if numel(nNodesInElements)~=numel(unique(nNodesInElements))
-            warning('Some elements types have the same node number: automatic type assignment is ambiguous.') ;
+end
+
+
+%% ELEMENT TABLE CLEANUP
+methods
+    function this = clean(this)
+    % Clean the table
+    % Cull elements with duplicated nodes
+        dupNode = any(diff(sort(this.NodeIdx,2),1,2)==0,2) ;
+        if any(dupNode)
+            this.Indices = this.Indices(~dupNode,:) ;
         end
-    % Number of nodes in each line of the node indices
-        nNodes = this.nNodes ;
-    % Initialize with empty elements by default
-        newTypes = repmat(pkg.mesh.elements.EmptyElement,[this.nElems 1]) ;
-     % Assign with the count the number of nodes
-        for tt = 1:numel(types)
-            newTypes(nNodesInElements(tt)==nNodes) = types(tt) ;
-        end
-        types = newTypes ;
+    % Make the element list unique
+        this = unique(this) ;
     end
 end
 
 
 %% CONNECTIVITY RETRIEVING
 methods
-    function [edges,ie] = uniqueEdges(this)
-    % Return the list of unique edges
+    function [faces,elem2face] = uniqueFaces(this)
+    % Return the list of unique faces
+        [faces,elem2face] = getTableOfUnique(this,'Faces') ;
     end
     
-    function edges = allEdges(this)
-    % Return the complete list of edges (with duplicates)
-    % Build Edge Table
-        edges = [this.Types.Edges] ; % Local indices (ELEMENT node number)
-    % Globalize indices
-        nEdges = [this.Types.nEdges] ; % Edges by element
-        edgElem = repelem(1:this.nElems,nEdges) ; % Element associated to each edge
-        edgElem = repmat(edgElem(:),edges.nMaxNodesByElem) ;
-        valid = edges.Indices>0 ; % Valid edge indices
-        iii = sub2ind(size(this.Indices),edgElem(valid),edges.Indices(valid)) ;
-        edges.Indices(valid) = this.Indices(iii) ; % Global indices (MESH node number)
+    function [faces,faceElmt] = allFaces(this)
+    % Return the complete table of faces (with duplicates)
+        [faces,faceElmt] = getTableOf(this,'Faces') ;
+    end
+    
+    function [edges,elem2edge] = uniqueEdges(this)
+    % Return the list of unique edges
+        [edges,elem2edge] = getTableOfUnique(this,'Edges') ;
+    end
+    
+    function [edges,edgElmt] = allEdges(this)
+    % Return the complete table of edges (with duplicates)
+        [edges,edgElmt] = getTableOf(this,'Edges') ;
+    end
+    
+    function [table,elem2feat] = getTableOfUnique(this,features)
+    % Return the table of unique element features (with duplicates)
+    % featIdx returns the feature indices associated to each element in the
+    % list
+        [table,featElmt] = getTableOf(this,features) ;
+        [table,ie] = unique(table) ;
+        if nargout<2 ; return ; end
+        elem2feat = sparse(ie(:),featElmt(:),true,table.nElems,this.nElems) ;
+    end
+    
+    function [table,featElmt] = getTableOf(this,features)
+    % Return the complete table of element features (with duplicates)
+    % Features are 'Faces' or 'Edges'
+        if nargin<2 || ~ismember(features,{'Faces','Edges'})
+            error('Wrong feature argument') ;
+        end
+    % Init feature table with types
+        table = [this.Types.(features)] ;
+    % Feature hierarchy
+        % Features counts
+            nFeatInElemType = [0 this.Types.(['n' features])] ; % (includes typeIdx=0)
+            nFeatTypesInPrevElems = cumsum(nFeatInElemType) ;
+        % Element associated to each feature
+            featElmt = repelem(1:this.nElems,nFeatInElemType(this.TypeIdx+1)) ;
+        % Feature index in the parent element
+            featIdxInElem = arrayfun(@colon,nFeatInElemType*0 + 1,nFeatInElemType,'UniformOutput',false) ;
+            featIdxInElem = [featIdxInElem{this.TypeIdx+1}] ;
+        % Feature index in the current table
+            featIdxInTable = arrayfun(@colon,nFeatTypesInPrevElems - nFeatInElemType + 1,nFeatTypesInPrevElems,'UniformOutput',false) ;
+            featIdxInTable = [featIdxInTable{this.TypeIdx+1}] ;
+    % "Local" node indices (in the ELEMET list of nodes & types)
+        nodeIdx = table.NodeIdx(featIdxInTable,:) ;
+    % "Global" node indices (in the MESH list of nodes)
+        % Linear indexation
+            valid = nodeIdx>0 ; % Valid feature indices
+        	featElmtRep = repmat(featElmt(:),1,table.nMaxNodesByElem) ;
+            iii = sub2ind(size(this.Indices),featElmtRep(valid),nodeIdx(valid)) ;
+        % Global indices (MESH node number)
+            nodeIdx(valid) = this.NodeIdx(iii) ;
+    % "Global" type indices. Local typeIdx are forced to be valid (as defined in elements classes)
+        typeIdx = zeros(size(nodeIdx,1),1,'uint32') ;
+        typeIdx = table.TypeIdx(featIdxInElem+nFeatTypesInPrevElems(this.TypeIdx(featElmt))) ;
+    % Set the table
+        table.Indices = [typeIdx nodeIdx] ;
     end
 end
 
 
 %% INDICES MANIPULATION
 methods
+    function typeIdx = assignElementTypeIdx(this,nodeIdx,types)
+    % Return the list of element types indices corresponding to a list of Node indices. 
+    % Uses the number of nodes by element. 
+        if nargin<2 ; nodeIdx = this.NodeIdx ; end
+        if nargin<3 ; types = this.Types ; end
+    % Number of nodes in each available element type
+        nNodeInType = [types.nNodes] ;
+        if numel(nNodeInType)~=numel(unique(nNodeInType))
+            warning('Some elements types have the same node number: automatic type assignment is ambiguous.') ;
+        end
+    % Find new TypeIdx
+        nValidNodeIdx = sum(nodeIdx>0,2) ;
+        [~,typeIdx] = ismember(nValidNodeIdx,nNodeInType) ;
+    end
+    
     function indices = paddedIndices(this,N,indices)
     % Pad the table indices with zeros to match a given N
         if nargin<3 ; indices = this.Indices ; end
@@ -140,13 +248,15 @@ methods
         if N0~=N ; indices = [indices(:,1:min(N0,N)) zeros(this.nElems,N-N0,'uint32')] ; end
     end
     
-    function indices = catIndices(tables)
+    function [indices,iT] = catIndices(tables)
     % Concatenate indices of multiple tables
     % Retrieve indices
         IND = {tables.Indices} ;
     % Retrieve indices size
         [nElems,nMax] = cellfun(@size,IND) ;
         [uNMax,~,ia] = unique(nMax) ;
+    % Corresponding input table number
+        iT = repelem(1:numel(tables),nElems)' ;
     % If all lengths match
         if numel(uNMax)==1
             indices = cat(1,IND{:}) ; 
@@ -165,10 +275,19 @@ methods
         end
     end
     
-    function [table,ia] = unique(this)
+    function [this,ia] = unique(this)
     % Return a table of UNIQUE elements
-        [~,ie,ia] = unique(sort(this.Indices,2),'rows','stable') ;
-        table = pkg.mesh.elements.ElementTable('Types',this.Types(ie),'Indices',this.Indices(ie,:)) ;
+    % Make the list of element types unique
+        [types,~,uTypeIdx] = unique(this.Types) ;
+        validType = this.TypeIdx>0 ;
+        this.TypeIdx(validType) = uTypeIdx(this.TypeIdx(validType)) ;
+        this.Types = types ;
+    % Cull duplicated element (same type AND node indices list)
+        sortedIndices = [this.TypeIdx sort(this.NodeIdx,2)] ;
+        [~,ie,ia] = unique(sortedIndices,'rows') ;
+        if numel(ie)~=numel(ia)
+            this.Indices = this.Indices(ie,:) ;
+        end
     end
 end
 
@@ -182,47 +301,100 @@ methods
 %             [varargout{1:nargout}] = builtin('subsref',this,s) ; 
 %             return ;
 %         end
-%     % Sub-table extraction
-%         switch s(1).type
-%             case '()'
-%                 if this.nElems==0 % No elements to extract
-%                     varargout{1} = pkg.mesh.elements.ElementTable() ;
-%                 else % There is elements to extract
+%     % Sub-table extraction with out = this(ind,:)
+%         if strcmp(s(1).type,'()') % && numel(s(1).subs)==1
+%             disp('TABLE SUBSREF') ;
+%             if this.nElems==0 % No elements to extract
+%                 varargout{1} = pkg.mesh.elements.ElementTable() ;
+%             else % There is elements to extract 
+%                 % Force extraction of all indices
 %                     s(1).subs = {s(1).subs{1},':'} ; 
-%                     varargout{1} = pkg.mesh.elements.ElementTable(...
-%                                         'Types',subsref(this.Types,s(1)) ...
-%                                         ,'Indices',subsref(this.Indices,s(1)) ...
-%                                         ) ;
-%                 end
-%                 if numel(s)>1
-%                     [varargout{1:nargout}] = subsref(varargout{1},s(2:end)) ;
-%                 end
-%             otherwise
-%                 [varargout{1:nargout}] = builtin('subsref',this,s);
+%                 % Extract the sub-list in indices
+%                     indices = subsref(this.Indices,s(1)) ; 
+%                 % List of used types
+%                     [typeIdx,~,it] = unique(indices(:,1)) ;
+%                     types = this.Types(typeIdx(typeIdx~=0)) ;
+%                     indices(:,1) = it(:) ;
+%                 % Create the sub-table
+%                     varargout{1} = pkg.mesh.elements.ElementTable('Types',types,'Indices',indices) ;
+%             end
+%             if numel(s)>1 % If the subsref is deeper..
+%                 [varargout{1:nargout}] = subsref(varargout{1},s(2:end)) ;
+%             end
+%         else
+%             [varargout{1:nargout}] = builtin('subsref',this,s);
+%         end
+%     end
+
+%     function this = subsasgn(this,s,data)
+%     % Sub-assignment
+%     % Allow to assign a sub-part of ONE table with element indices
+%         if numel(this)>1 
+%             [varargout{1:nargout}] = builtin('subsasgn',this,s) ; 
+%             return ;
+%         end
+%     % Sub-table assignment with this(ind,:) = data
+%         if strcmp(s(1).type,'()') % && numel(s(1).subs)==1
+%             disp('TABLE SUBSASGN') ;
+%             if numel(s)==1 % A sub-part of the table has to be set
+%                 subTable = subsref(this,s(1)) ;
+%             elseif numel(s)==2 % Some properties of a sub-part of the table has to be set
+%             else % Cannot
+%             end
+%             % Force extraction of all indices
+%                 s(1).subs = {s(1).subs{1},':'} ; 
+%             % Extract the sub-list in indices
+%                 indices = subsref(this.Indices,s(1)) ; 
+%             % List of used types
+%                 [typeIdx,~,it] = unique(indices(:,1)) ;
+%                 types = this.Types(typeIdx(typeIdx~=0)) ;
+%                 indices(:,1) = it(:) ;
+%             % Create the sub-table
+%                 varargout{1} = pkg.mesh.elements.ElementTable('Types',types,'Indices',indices) ;
+%             if numel(s)>1 % If the subsref is deeper..
+%                 [varargout{1:nargout}] = subsref(varargout{1},s(2:end)) ;
+%             end
+%         else % All other cases
+%             [varargout{1:nargout}] = builtin('subsref',this,s);
+%         end
+%     end
+    
+%     function ii = end(this,k,~)
+%     % Return the last indice in the table
+%         switch k
+%             case 1 ; ii = this.nElems ;
+%             case 2 ; ii = size(this.Indices) ;
+%             otherwise ; ii = 1 ;
 %         end
 %     end
     
     function table = cat(~,varargin)
     % Concatenate element tables to an unique table
     % Convert to tables
-        tables = builtin('cat',1,varargin{:}) ; %cellfun(@pkg.mesh.elements.ElementTable,varargin) ;
-    % Concatenate Element Types
-        types = cat(1,tables.Types) ;
+        tables = cellfun(@pkg.mesh.elements.ElementTable,varargin) ;
     % Concatenate Indices
-        indices = catIndices(tables) ;
+        [indices,ta] = catIndices(tables) ;
+    % Concatenate Element Types
+        types = [tables.Types] ;
+    % Change Element Type Indices 
+        nTypesInTable = [tables.nTypes] ;
+        nTypesInPreviousTables = [0 cumsum(nTypesInTable)] ;
+        typeIdx = indices(:,1) + uint32(reshape(nTypesInPreviousTables(ta),[],1)) ;
+        typeIdx(indices(:,1)==0) = 0 ;
+        indices(:,1) = typeIdx ;
     % Create the table
-        %table = pkg.mesh.elements.ElementTable('Indices',indices,'Types',types) ; 
         table = pkg.mesh.elements.ElementTable() ; 
         table.Types = types ;
         table.Indices = indices ; 
     end
+    function table = vertcat(varargin) ; table = cat(1,varargin{:}) ; end
+    function table = horzcat(varargin) ; table = cat(1,varargin{:}) ; end
     
-    function table = vertcat(varargin)
-        table = cat(1,varargin{:}) ;
-    end
-
-    function table = horzcat(varargin)
-        table = cat(1,varargin{:}) ;
+    function table = repmat(this,varargin)
+    % Replicate vertically the element table
+        if nargin==2 ; nRep = prod(varargin{1}) ; end
+        if nargin>2 ; nRep = prod(cat(2,varargin{:})) ; end
+        table = pkg.mesh.elements.ElementTable('Types',this.Types,'Indices',repmat(this.Indices,[nRep 1])) ;
     end
 end
 
@@ -230,4 +402,3 @@ end
 %% CONNECTIVITY LISTS
 
 end
-

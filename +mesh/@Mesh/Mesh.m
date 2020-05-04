@@ -35,8 +35,11 @@ classdef Mesh < matlab.mixin.Copyable
                     elems = uint32(elems) ;
                     elems = pkg.mesh.elements.ElementTable('Indices',elems,'Types',this.Elems.Types) ;
             end
-        % Cull duplicates
-            elems = unique(elems) ;
+        % Clean the element list
+            elems = clean(elems) ;
+        % Set mesh features
+            this.Faces = elems.uniqueFaces ;
+            this.Edges = elems.uniqueEdges ;
         % Set
             this.Elems = elems ;
         end
@@ -56,19 +59,12 @@ classdef Mesh < matlab.mixin.Copyable
     
     
 %% MESH FACES & EDGES
-%     properties (Dependent , SetAccess = private)
-%         % Table of faces 
-%         Faces pkg.mesh.elements.ElementTable
-%         % Table of edges
-%         Edges pkg.mesh.elements.ElementTable
-%     end
-%     methods % Set / Get methods
-%         % Faces
-%         function faces = get.Faces(this)
-%             faces = [this.Elems.types.Faces] ;
-%         end
-%         % Edges
-%     end
+    properties (SetAccess = private)
+        % Table of faces 
+        Faces pkg.mesh.elements.ElementTable
+        % Table of edges
+        Edges pkg.mesh.elements.ElementTable
+    end
     
     
 %% COUNT FUNCTIONS

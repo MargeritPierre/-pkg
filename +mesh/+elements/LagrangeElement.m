@@ -62,11 +62,12 @@ classdef LagrangeElement < pkg.mesh.elements.AbstractElement
                 switch geometry
                     case '1D' % 1D element
                         this.createTensorProdElement(1,order) ;
-                        %this.Edges = (1:this.nNodes-1)' + [0 1] ;
                     case 'tri' % 2D simplex triangle
+                        this.createSimplexElement(2,order) ;
                     case 'quad' % 2D quad
                         this.createTensorProdElement(2,order) ;
                     case 'tet' % 3D tetrahedron
+                        this.createSimplexElement(3,order) ;
                     case 'hex' % 3D hexahedron
                         this.createTensorProdElement(3,order) ;
                     otherwise
@@ -84,44 +85,108 @@ classdef LagrangeElement < pkg.mesh.elements.AbstractElement
             end
         end
         
+        function edges = faceEdges(~,faces,edges)
+        % Return the node indices of unique edges related to faces
+            nFaces = size(faces,1) ; nEdges = size(edges,1) ; nNd = size(edges,2) ;
+            edges = sub2ind(size(faces),repmat((1:nFaces),[numel(edges) 1]),repmat(edges(:),[1 nFaces])) ;
+            edges = reshape(faces(edges),[nEdges nNd nFaces]) ;
+            edges = reshape(permute(edges,[1 3 2]),[nFaces*nEdges nNd]) ;
+            [~,ue] = unique(sort(edges,2),'rows') ;
+            edges = edges(ue,:) ;
+        end
+        
         function createTensorProdElement(this,NDIMS,ORDER)
         % Set the element properties corresponding to a tensor product element 
         % Used for geometries 1D, quad, hex, ...
-            % CONSTRUCT THE BASE POLYNOMS
-                if ORDER==0 % ZERO-order elements
-                    this.PolyExp = zeros(1,NDIMS) ;
-                    this.NodeLocalCoordinates = [zeros(1,NDIMS) ; eye(NDIMS) ; ones(1,NDIMS)] ;
+        % CONSTRUCT THE BASE POLYNOMS
+            if ORDER==0 % ZERO-order elements
+                this.PolyExp = zeros(1,NDIMS) ;
+                this.NodeLocalCoordinates = [zeros(1,NDIMS) ; eye(NDIMS) ; ones(1,NDIMS)] ;
+            else
+                % Polynom Exponents
+                    P = arrayfun(@(dim)0:ORDER,1:NDIMS,'UniformOutput',false) ;
+                    if NDIMS>1 ; [P{:}] = ndgrid(P{:}) ; end
+                    PP = cat(NDIMS+1,P{:}) ;
+                    this.PolyExp = reshape(PP,(ORDER+1)^NDIMS,NDIMS) ;
+                % Node Coordinates
+                    this.NodeLocalCoordinates = this.PolyExp/ORDER ;
+            end
+            this.buildPolynomialBasis() ;
+        % ELEMENT EDGES AND FACES
+            nNd = max(2,this.Order+1) ; % number of nodes by dimension
+            IND = reshape(1:nNd^this.nDims,[nNd*ones(1,this.nDims) 1]) ; % Array of node indices
+            % 1D elements
+                if this.nDims==1
+                    edgeElemType = this ; % The element is 1D, so its only edge is itself
+                    edgeNodIdx = IND(:)' ; 
                 else
-                    % Polynom Exponents
-                        P = arrayfun(@(dim)0:ORDER,1:NDIMS,'UniformOutput',false) ;
-                        if NDIMS>1 ; [P{:}] = ndgrid(P{:}) ; end
-                        PP = cat(NDIMS+1,P{:}) ;
-                        this.PolyExp = reshape(PP,(ORDER+1)^NDIMS,NDIMS) ;
-                    % Node Coordinates
-                        this.NodeLocalCoordinates = this.PolyExp/ORDER ;
+                    edgeElemType = pkg.mesh.elements.LagrangeElement('1D',this.Order) ; % Edges: 1D element of the same order
+                    e1 = IND(:,1,1) ; e2 = IND(end,:,1) ; e3 = flip(IND(:,end,1)) ; e4 = flip(IND(1,:,1)) ;
+                    edgeNodIdx = [e1(:) e2(:) e3(:) e4(:)]' ;
                 end
-                this.buildPolynomialBasis() ;
-            % ELEMENT EDGES AND FACES
-                nNd = max(2,this.Order+1) ; % number of nodes by dimension
-                if this.nDims==1 % The element is 1D, so the only edge is itself
-                    edgeElem = this ;
-                    edgeInd = 1:this.nNodes ;
-                else % 1D element of the same order
-                    edgeElem = pkg.mesh.elements.LagrangeElement('1D',this.Order) ;
-                    if this.nDims==2 % The element is 2D, so its only face is itself
-                        faceElem = this ;
-                        faceInd = 1:this.nNodes ;
-                        edgeInd = [1:nNd ; nNd:nNd:this.nNodes ; this.nNodes:-1:this.nNodes-nNd+1 ; this.nNodes-nNd+1:-nNd:1] ;
-                    else % 2D quad of the same order
-                        faceElem = pkg.mesh.elements.LagrangeElement('quad',this.Order) ;
-                        edgeInd = 1:nNd ;
-                        faceInd = 1:nNd^2 ;
-                    end
+            % 2D elements
+                if this.nDims==2
+                    faceElemType = this ; % The element is 2D, so its only face is itself 
+                    faceNodIdx = 1:nNd^2 ;
+            % 3D elements 
+                elseif this.nDims>2
+                    faceElemType = pkg.mesh.elements.LagrangeElement('quad',this.Order) ; % Faces: 2D quad of the same order
+                    % Faces
+                        f1 = IND(1,:,:) ; f2 = IND(end,:,:) ; f3 = IND(:,1,:) ; f4 = IND(:,end,:) ; f5 = IND(:,:,1) ; f6 = IND(:,:,end) ;
+                        faceNodIdx = [f1(:) f2(:) f3(:) f4(:) f5(:) f6(:)]' ;
+                    % Edges
+                        edgeNodIdx = faceEdges(this,faceNodIdx,edgeNodIdx) ;
                 end
-                this.Edges = pkg.mesh.elements.ElementTable('Types',edgeElem,'Indices',edgeInd) ; %,'Indices',1:this.nNodes) ;
-                if this.nDims>1
-                    this.Faces = pkg.mesh.elements.ElementTable('Types',faceElem,'Indices',faceInd) ; %,'Indices',1:this.nNodes) ;
+            % Assign
+                if this.nDims>1 ; this.Faces = pkg.mesh.elements.ElementTable('Types',faceElemType,'NodeIdx',faceNodIdx) ; end
+                this.Edges = pkg.mesh.elements.ElementTable('Types',edgeElemType,'NodeIdx',edgeNodIdx) ;
+        end
+        
+        function createSimplexElement(this,NDIMS,ORDER)
+        % Set the element properties corresponding to a simplex element 
+        % Used for geometries tri, tet, ...
+        % CONSTRUCT THE BASE POLYNOMS
+            if ORDER==0 % ZERO-order elements
+                this.PolyExp = zeros(1,NDIMS) ;
+                this.NodeLocalCoordinates = [zeros(1,NDIMS) ; eye(NDIMS)] ;
+            else % Higher-order elements
+                % Polynomial coefficients
+                    P = arrayfun(@(dim)0:ORDER,1:NDIMS,'UniformOutput',false) ;
+                    if NDIMS>1 ; [P{:}] = ndgrid(P{:}) ; end
+                    PP = cat(NDIMS+1,P{:}) ;
+                    PP = reshape(PP,(ORDER+1)^NDIMS,NDIMS) ;
+                    this.PolyExp = PP(sum(PP,2)<=ORDER,:) ;
+                % Node coordinates
+                    this.NodeLocalCoordinates = this.PolyExp/ORDER ;
+            end
+            this.buildPolynomialBasis() ;
+        % ELEMENT EDGES AND FACES
+            nNd = max(2,this.Order+1) ; % number of nodes by dimension
+            % Edges
+                edgeElemType = pkg.mesh.elements.LagrangeElement('1D',this.Order) ; % Edges: 1D element of the same order
+                e1 = 1:nNd ;
+                e2 = cumsum(nNd:-1:1) ;
+                e3 = flip([1 e2(1:end-2)+1 e2(end)]) ;
+                edgeNodIdx = [e1 ; e2 ; e3] ;
+            % 2D Simplices
+                if this.nDims==2
+                    faceElemType = this ; % The element is 2D, so its only face is itself 
+                    faceNodIdx = 1:this.nNodes ;
+            % 3D elements 
+                elseif this.nDims>2
+                    % Faces
+                        faceElemType = pkg.mesh.elements.LagrangeElement('tri',this.Order) ; % Faces: 2D triangles of the same order
+                        f1 = find(this.NodeLocalCoordinates(:,1)==0) ;
+                        f2 = find(this.NodeLocalCoordinates(:,2)==0) ;
+                        f3 = find(this.NodeLocalCoordinates(:,3)==0) ;
+                        f4 = find(abs(sum(this.NodeLocalCoordinates,2)-1)<eps) ;
+                        faceNodIdx = [f1(:) f2(:) f3(:) f4(:)]' ;
+                    % Edges
+                        edgeNodIdx = faceEdges(this,faceNodIdx,edgeNodIdx) ;
                 end
+            % Assign
+                this.Faces = pkg.mesh.elements.ElementTable('Types',faceElemType,'NodeIdx',faceNodIdx) ;
+                this.Edges = pkg.mesh.elements.ElementTable('Types',edgeElemType,'NodeIdx',edgeNodIdx) ;
         end
     end
     

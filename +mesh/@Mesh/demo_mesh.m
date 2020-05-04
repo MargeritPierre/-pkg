@@ -1,28 +1,50 @@
 %% TEST MESH PACKAGE
-clc,clearvars
-import pkg.mesh.*
-import pkg.mesh.elements.*
 
 
-% mesh = Mesh('Elems',[1 2 3 NaN ; 3 1 4 5]) ;
-% 
-% mesh.Elems = [mesh.Elems [3 4 6]] ; % element table concatenation
-% mesh.X = rand(mesh.nNodes,3) ; % set mesh nodal coordinates
+%% THE RANDOM MESH (code timing)
 
-%
-nNodes = 1000000 ;
-nElems = 100000 ;
-elemType = LagrangeElement('quad',1) ;
-nodeIndices = randi([1 nNodes],[nElems elemType.nNodes]) ;
+    clc,clearvars
+    import pkg.mesh.*
+    import pkg.mesh.elements.*
+    
+    nNodes = 10000000 ; % Number of nodes
+    nElems = 3 ; % Number of random elements
+    elemType = LagrangeElement('quad',1) ; % Element type (only on type supported here)
+    
+    nodeIndices = randi([1 nNodes],[nElems elemType.nNodes]) ; % Indices of nodes connected to each element
+    indices = [ones(size(nodeIndices,1),1) nodeIndices] ; % Including the element type
 
-elemTable = ElementTable('Types',elemType,'Indices',nodeIndices) ;
-mesh = Mesh('Elems',elemTable) ;
 
-tic ;
-profile on
+    tic ;
+    %profile on
+    
+    % Create the element table
+    elemTable = ElementTable('Types',elemType,'Indices',indices) ;
+    
+    % Create the mesh
+    mesh = Mesh('Elems',elemTable) ;
 
-edges = mesh.Elems.allEdges ;
-
-profile viewer
-toc
+    %profile viewer
+    toc
+    
+    
+%% THE MIXED-ELEMENT MESH (TRIS & QUADS)
+    clc,clearvars
+    import pkg.mesh.*
+    import pkg.mesh.elements.*
+    
+    elemTypes = [LagrangeElement('tri',1) LagrangeElement('quad',1)] ;
+    nodeIdx = [1 2 4 3 ; 3 7 5 NaN ; 4 3 6 5] ;
+    typeIdx = [2 ; 1 ; 2] ;
+    
+    if 0 % Give the element type
+        mesh = Mesh('Elems',ElementTable('Types',elemTypes,'Indices',[typeIdx nodeIdx])) ;
+    else % Element type automatically assigned (verify with mesh.Elems.TypeIdx==typeIdx)
+        mesh = Mesh('Elems',ElementTable('Types',elemTypes,'NodeIdx',nodeIdx)) ;
+    end
+    
+    
+    
+    
+    
 

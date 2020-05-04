@@ -121,22 +121,22 @@ classdef (Abstract) AbstractElement < handle & matlab.mixin.Heterogeneous
             h = gobjects(0) ;
             E = this.localCoordinatesIn3D ;
             % Faces
-            h(end+1) = patch(ax,'Vertices',E,'Faces',this.Faces,'Tag','Faces') ;
-                h(end).FaceColor = 'w' ;
-                h(end).EdgeColor = 'k' ;
-                h(end).LineWidth = 0.5 ;
+%             h(end+1) = patch(ax,'Vertices',E,'Faces',this.Faces.NodeIdx,'Tag','Faces') ;
+%                 h(end).FaceColor = 'w' ;
+%                 h(end).EdgeColor = 'k' ;
+%                 h(end).LineWidth = 0.5 ;
             h(end+1) = hggroup(ax,'Tag','FaceLabels') ;
                 lbl = arrayfun(@(c)['F' num2str(c)],1:this.nFaces,'UniformOutput',false) ;
-                P = this.meanDataAtIndices(E,this.Faces) ;
+                P = this.meanDataAtIndices(E,this.Faces.NodeIdx) ;
                 txt = text(ax,P(:,1),P(:,2),P(:,3),lbl,'Parent',h(end),'BackgroundColor','w','edgecolor','k') ;
             % Edges
-            h(end+1) = patch(ax,'Vertices',E,'Faces',this.Edges,'Tag','Edges') ;
+            h(end+1) = patch(ax,'Vertices',E,'Faces',this.Edges.NodeIdx,'Tag','Edges') ;
                 h(end).FaceColor = 'none' ;
                 h(end).EdgeColor = 'k' ;
                 h(end).LineWidth = 2 ;
             h(end+1) = hggroup(ax,'Tag','EdgeLabels') ;
                 lbl = arrayfun(@(c)['E' num2str(c)],1:this.nEdges,'UniformOutput',false) ;
-                P = this.meanDataAtIndices(E,this.Edges) ;
+                P = this.meanDataAtIndices(E,this.Edges.NodeIdx) ;
                 txt = text(ax,P(:,1),P(:,2),P(:,3),lbl,'Parent',h(end),'BackgroundColor','w','edgecolor','k') ;
             % Nodes
             h(end+1) = patch(ax,'Vertices',E,'Faces',(1:this.nNodes)','Tag','Nodes') ;
