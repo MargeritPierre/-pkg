@@ -159,7 +159,7 @@ methods
     
     function M = sparse(this,values)
     % Return a sparse matrix containing values of different kinds
-        if nargin<2 ; values = 'indices' ; end
+        if nargin<2 ; values = 'logical' ; end
         switch values
             case 'logical' % M(ii,jj) = true if ismember(ii,this.NodeIdx(jj,:))
                 vvv = true(size(this.NodeIdx)) ;
@@ -433,6 +433,11 @@ methods
         if nargin>2 ; nRep = prod(cat(2,varargin{:})) ; end
         table = pkg.mesh.elements.ElementTable('Types',this.Types,'Indices',repmat(this.Indices,[nRep 1])) ;
     end
+end
+
+
+%% NODE LOCALIZATION ETC...
+methods    
 end
 
 end

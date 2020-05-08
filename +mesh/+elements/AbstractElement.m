@@ -45,8 +45,14 @@ classdef (Abstract) AbstractElement < handle & matlab.mixin.Heterogeneous
         end
     end
 
-%% SHAPE FUNCTIONS DERIVATIVES (MAY BE OVERRIDEN)
+%% SHAPE FUNCTIONS DERIVATIVES
     methods
+        
+        function delta = defaultDelta(this)
+        % Default step used for finite diff gradient evaluation
+            delta = range(this.localCoordinatesDomain,1)*1e-6 ;
+        end
+        
         function DER = evalDerivativeAt(this,E,ORD,delta)
         % Evaluate the partial derivatives of order ORD = [o1 o2 ...] (:[1 nDims]) of 
         % shape functions at given local coordinates E:[nRows nDims]
@@ -55,7 +61,7 @@ classdef (Abstract) AbstractElement < handle & matlab.mixin.Heterogeneous
         % analytical derivatives !
         % exemple: df(E)/(dx²dy) = DER(E,[2 1 0]) ;
             if nargin<3 ; ORD = [1 zeros(1,this.nDims-1)] ; end
-            if nargin<4 ; delta = range(this.localCoordinatesDomain,1)*1e-6 ; end
+            if nargin<4 ; delta = this.defaultDelta ; end
             if numel(ORD)~=this.nDims ; error('Wrong derivation order argument (must be [1 nDims])') ; end
             % Evaluation by a centered 2nd-order finite diff. scheme
                 if all(ORD==0) % No Derivative
@@ -68,6 +74,72 @@ classdef (Abstract) AbstractElement < handle & matlab.mixin.Heterogeneous
                             - this.evalDerivativeAt(E-de,newORD,delta) ...
                             ) / ( 2 * delta(DIM) ) ;
                 end
+        end
+        
+%         function [D,ORD] = evalAllDerivativesAt(this,E,T,delta)
+%         % Evaluate all derivatives corresponding to the total order T
+%         % E = [nE nDims]
+%         % delta = optionnal, for finite diff derivatives (see above)
+%         % D = [nE nNodes nDeriv]
+%         % So that d^{T}N(E)_(de_i1.de_i2...de_iT) = D(:,:,all(ORD==[i1,i2,...,iT],2))*Ne
+%             if nargin<3 ; T = 1 ; end % Return the gradient by default
+%             if nargin<4 ; delta = this.defaultDelta ; end
+%         % Build the derivation orders
+%             ORD = perms(repmat(0:T,[1 this.nDims])) ;
+%             ORD = unique(ORD(:,1:this.nDims),'rows') ;
+%             ORD = ORD(sum(ORD,2)==T,:) ;
+%             [~,sortInd] = sort(sum((ORD+1).^(this.nDims:-1:1),2),'descend') ; 
+%             ORD = ORD(sortInd,:) ;
+%             nDeriv = size(ORD,1) ;
+%         % Initialize the matrix
+%             D = NaN([size(E,1) this.nNodes nDeriv]) ;
+%         % Compute
+%             for oo = 1:nDeriv
+%                 D(:,:,oo) = this.evalDerivativeAt(E,ORD(oo,:),delta) ;
+%             end
+%         end
+        
+        function J = evalJacobianAt(this,E,delta)
+        % Return the shape function gradient evaluated at local coordinates E
+        % E = [nE nDims]
+        % delta = optionnal, for finite diff derivatives (see above)
+        % G = [nE nNodes nDims]
+        % So that dN_dei = G(:,:,i)*Ne
+            if nargin<3 ; delta = this.defaultDelta ; end
+            J = NaN(size(E,1),this.nNodes,this.nDims) ;
+            for dim = 1:this.nDims
+                ORD = full(sparse(1,dim,1,1,this.nDims)) ;
+                J(:,:,dim) = this.evalDerivativeAt(E,ORD,delta) ;
+            end
+        end
+        
+        function [H,ORD,id] = evalHessianAt(this,E,delta)
+        % Return the shape function second derivative evaluated at local coordinates E
+        % E = [nE nDims]
+        % delta = optionnal, for finite diff derivatives (see above)
+        % G = [nE nNodes nDims nDims]
+        % So that d²N_(dei.dej) = H(:,:,i,j)*Ne
+        % If only H is queried, then H is the hessian matrix (with
+        % symmetric values duplicated)
+        % Otherwise, ORD is the orders of derivations corresponding to each
+        % slice of H and id contains the index of the slice of H
+        % corresponding to the right derivative: Hessian = H(:,:,id) ;
+            if nargin<3 ; delta = this.defaultDelta ; end
+        % Build the derivation order vectors
+            ORD = reshape(eye(this.nDims),[1 this.nDims this.nDims]) ;
+            ORD = ORD + permute(ORD,[2 1 3]) ;
+            ORD = reshape(ORD,[],this.nDims) ;
+            [ORD,~,id] = unique(ORD,'rows') ; % prevent computation of the same derivatives
+            id = reshape(id,[this.nDims this.nDims]) ;
+            nDeriv = size(ORD,1) ;
+        % Intialize the Hessian
+            H = NaN(size(E,1),this.nNodes,nDeriv) ;
+        % Compute
+            for dd = 1:nDeriv
+                H(:,:,dd) = this.evalDerivativeAt(E,ORD(dd,:),delta) ;
+            end
+        % If the hessian matrix is asked for
+            if nargout==1 ; H = reshape(H(:,:,id),size(E,1),this.nNodes,this.nDims,this.nDims) ; end
         end
     end
     

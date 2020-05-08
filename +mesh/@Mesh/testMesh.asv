@@ -9,7 +9,7 @@ clf
     set(gca,'xtick',[],'ytick',[]) ;
     axis off
 
-tol = 0.02 ;
+tol = 0.05 ;
 Nodes = rand(1000000,2) ;
 Nodes = uniquetol(Nodes,tol,'ByRows',true) ;
 Tris = delaunay(Nodes(:,1:2)) ;
@@ -18,21 +18,6 @@ tic
 mesh = pkg.mesh.Mesh('Nodes',Nodes,'Elems',Tris) ;
 h = plot(mesh) ;
 toc
-
-
-%% QUAD MESH ON A GRID
-N = 10 ;
-[X,Y] = meshgrid(linspace(0,1,N),linspace(0,1,N)) ;
-Elems = [1:N-1 ; 2:N ; N+2:2*N ; N+1:2*N-1]' ;
-Elems = repmat(Elems,[N-1 1]) + N*kron((0:N-2)',Elems*0+1) ;
-Nodes = [X(:) Y(:)] ;
-Elems = Elems(:,[1 2 4 3]) ; % for lagrange quad compatibility
-
-mesh = pkg.mesh.Mesh('Nodes',Nodes,'Elems',Elems) ;
-
-cla
-plot(mesh)
-axis equal
 
 
 %% LAPLACIAN SMOOTHING
@@ -44,7 +29,7 @@ tol = 1e-9 ;
 tic
 mesh.LaplacianSmoothing(lmbda,iterations,tol) ;
 toc
-cla ;
+delete(h) ;
 h = plot(mesh) ;
 
 
@@ -111,7 +96,7 @@ if any(~in) ; p(end+1) = plot(pts(~in,1),pts(~in,2),'.b','markersize',10) ; end
 %% POINT LOCALIZATION
 
 mesh.setElementOrder(2) ;
-P = rand(10000,mesh.nCoord) ; 
+P = rand(10,mesh.nCoord) ; 
 
 clf ;
 h = plot(mesh) ; 

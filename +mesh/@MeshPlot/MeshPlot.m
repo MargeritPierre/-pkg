@@ -5,6 +5,7 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
     properties
         Mesh = pkg.mesh.Mesh.empty
         CData = [] 
+        GraphicGroup = gobjects(0)
     end
     properties (Dependent)
         % Object
@@ -24,8 +25,9 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
             NodeStyle
     end
     properties (Hidden)
-        Patches
-        Lines
+        AllEdges
+        BoundaryEdges
+        OuterFaces
         Labels
     end
     
@@ -42,9 +44,9 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         
         function delete(this)
         % Class destructor
-            delete(this.Patches)
-            delete(this.Lines)
-            delete(this.Labels)
+%             delete(this.Patches)
+%             delete(this.Lines)
+%             delete(this.Labels)
         end
     end
     
@@ -61,10 +63,10 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
     
     methods
         function set.Parent(this,parent)
-            set([this.Patches this.Lines this.Labels],'Parent',parent) ;
+            set(this.GraphicGroup,'Parent',parent) ;
         end
         function parent = get.Parent(this)
-            parent = get(this.Patches,'Parent') ;
+            parent = get(this.GraphicGroup,'Parent') ;
         end
     end
     
@@ -79,35 +81,46 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
     methods (Access = protected)
         function init(this)
         % Object initialization function
-            this.Patches = patch(gobjects(0) ...
+            this.GraphicGroup = hggroup(gobjects(0)) ;
+            this.AllEdges = patch(gobjects(0) ...
                             ,'Vertices',[] ...
                             ,'Faces',[] ...
                             ,'FaceColor','none' ...
                             ,'EdgeColor','k' ...
+                            ,'Parent',this.GraphicGroup ...
                             ) ;
-            this.Lines = line(gobjects(0) ...
-                            ,NaN ...
-                            ,NaN ...
-                            ,'Linewidth',1.5 ...
-                            ,'Color','k' ...
+            this.BoundaryEdges = patch(gobjects(0) ...
+                            ,'Vertices',[] ...
+                            ,'Faces',[] ...
+                            ,'FaceColor','none' ...
+                            ,'EdgeColor','k' ...
+                            ,'LineWidth',1.5 ...
+                            ,'Parent',this.GraphicGroup ...
                             ) ;
-            this.Labels = text(gobjects(0),NaN,NaN,'') ;
+            this.OuterFaces = patch(gobjects(0) ...
+                            ,'Vertices',[] ...
+                            ,'Faces',[] ...
+                            ,'FaceColor','w' ...
+                            ,'EdgeColor','none' ...
+                            ,'Parent',this.GraphicGroup ...
+                            ) ;
+            this.Labels = text(gobjects(0)...
+                            ,NaN,NaN,'' ...
+                            ,'Parent',this.GraphicGroup ...
+                            ) ;
         end
         
         function update(this)
         % Object updating function
-            % Patch
-                this.Patches.Vertices = this.Mesh.X.Values ;
-                this.Patches.Faces = this.Mesh.Edges.indicesWithNaNs ;
-            % Boundary curves
-                crv = this.Mesh.boundaryCurves ;
-                nans = isnan(crv) | crv==0 ;
-                crv(nans) = 1 ;
-                crv = this.Mesh.X.Values(crv,:) ;
-                crv(nans,:) = NaN ;
-                this.Lines.XData = crv(:,1) ;
-                this.Lines.YData = crv(:,2) ;
-                if size(crv,2)>2 ; this.Lines.ZData = crv(:,3) ; end
+            % Add dummy nodes for display purposes
+                vertices = [this.Mesh.X.Values ; NaN(1,this.Mesh.nCoord)] ;
+                edgIdx = [this.Mesh.Edges.indicesWithNaNs ones(this.Mesh.nEdges,1)*this.Mesh.nNodes+1] ;
+            % All Edges
+                this.AllEdges.Vertices = vertices ;
+                this.AllEdges.Faces = edgIdx ;
+            % Boundary Edges
+                this.BoundaryEdges.Vertices = vertices ;
+                this.BoundaryEdges.Faces = edgIdx(this.Mesh.boundaryEdges,:) ;
         end
     end
     
@@ -115,9 +128,7 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
 %% COPY FUNCTION
     methods (Access = protected)
         function obj = copyElement(this)
-            obj.Patches = copy(this.Patches) ; 
-            obj.Lines = copy(this.Lines) ; 
-            obj.Labels = copy(this.Labels) ; 
+            obj.GraphicGroup = copy(this.GraphicGroup) ; 
         end
     end
 

@@ -5,6 +5,7 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
     properties
         Mesh = pkg.mesh.Mesh.empty
         CData = [] 
+        HandleGroup = gobjects(0)
     end
     properties (Dependent)
         % Object
@@ -42,9 +43,9 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         
         function delete(this)
         % Class destructor
-            delete(this.Patches)
-            delete(this.Lines)
-            delete(this.Labels)
+%             delete(this.Patches)
+%             delete(this.Lines)
+%             delete(this.Labels)
         end
     end
     
@@ -97,13 +98,13 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         function update(this)
         % Object updating function
             % Patch
-                this.Patches.Vertices = this.Mesh.Nodes ;
-                this.Patches.Faces = this.Mesh.Faces ;
+                this.Patches.Vertices = [this.Mesh.X.Values ; NaN(1,this.Mesh.nCoord)] ;
+                this.Patches.Faces = [this.Mesh.Edges.indicesWithNaNs ones(this.Mesh.nEdges,1)*this.Mesh.nNodes+1] ;
             % Boundary curves
                 crv = this.Mesh.boundaryCurves ;
-                nans = isnan(crv) ;
+                nans = isnan(crv) | crv==0 ;
                 crv(nans) = 1 ;
-                crv = this.Mesh.Nodes(crv,:) ;
+                crv = this.Mesh.X.Values(crv,:) ;
                 crv(nans,:) = NaN ;
                 this.Lines.XData = crv(:,1) ;
                 this.Lines.YData = crv(:,2) ;
