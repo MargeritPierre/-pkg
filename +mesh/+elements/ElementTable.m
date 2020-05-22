@@ -144,7 +144,7 @@ methods
     function this = clean(this)
     % Clean the table
     % Cull elements with duplicated nodes
-        dupNode = any(diff(sort(this.NodeIdx,2),1,2)==0,2) ;
+        dupNode = any(diff(double(sort(this.NodeIdx,2)),1,2)==0,2) ;
         if any(dupNode)
             this.Indices = this.Indices(~dupNode,:) ;
         end
@@ -412,7 +412,7 @@ methods
     % Concatenate Indices
         [indices,ta] = catIndices(tables) ;
     % Concatenate Element Types
-        types = [tables.Types] ;
+        types = cat(1,tables.Types) ;
     % Change Element Type Indices 
         nTypesInTable = [tables.nTypes] ;
         nTypesInPreviousTables = [0 cumsum(nTypesInTable)] ;

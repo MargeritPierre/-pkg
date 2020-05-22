@@ -132,7 +132,12 @@ classdef LagrangeElement < pkg.mesh.elements.AbstractElement
                 elseif this.nDims>2
                     faceElemType = pkg.mesh.elements.LagrangeElement('quad',this.Order) ; % Faces: 2D quad of the same order
                     % Faces
-                        f1 = IND(1,:,:) ; f2 = IND(end,:,:) ; f3 = IND(:,1,:) ; f4 = IND(:,end,:) ; f5 = IND(:,:,1) ; f6 = IND(:,:,end) ;
+                        f1 = permute(IND(1,:,:),[3 2 1]) ; 
+                        f2 = IND(end,:,:) ; 
+                        f3 = IND(:,1,:) ; 
+                        f4 = permute(IND(:,end,:),[3 1 2]) ; 
+                        f5 = IND(:,:,1)' ; 
+                        f6 = IND(:,:,end) ;
                         faceNodIdx = [f1(:) f2(:) f3(:) f4(:) f5(:) f6(:)]' ;
                     % Edges
                         edgeNodIdx = faceEdges(this,faceNodIdx,edgeNodIdx) ;
@@ -174,11 +179,17 @@ classdef LagrangeElement < pkg.mesh.elements.AbstractElement
                     faceNodIdx = 1:this.nNodes ;
             % 3D elements 
                 elseif this.nDims>2
+                    IND = reshape(PP,[nNd*ones(1,this.nDims) this.nDims]) ;
+                    IND = double(sum(IND,this.nDims+1)<nNd) ;
+                    IND(IND~=0) = 1:this.nNodes ;
+                    first = [1 zeros(1,nNd-1)] ; 
+                    p2IND = permute(IND,[1 3 2]) ;
+                    p3IND = permute(IND,[2 1 3]) ;
                     % Faces
                         faceElemType = pkg.mesh.elements.LagrangeElement('tri',this.Order) ; % Faces: 2D triangles of the same order
-                        f1 = find(this.NodeLocalCoordinates(:,1)==0) ;
-                        f2 = find(this.NodeLocalCoordinates(:,2)==0) ;
-                        f3 = find(this.NodeLocalCoordinates(:,3)==0) ;
+                        f1 = IND((IND.*first)~=0) ; %find(this.NodeLocalCoordinates(:,1)==0) ;
+                        f2 = p2IND((p2IND.*first')~=0) ; %find(this.NodeLocalCoordinates(:,2)==0) ;
+                        f3 = p3IND((p3IND.*reshape(first,1,1,[]))~=0) ; %find(this.NodeLocalCoordinates(:,3)==0) ;
                         f4 = find(abs(sum(this.NodeLocalCoordinates,2)-1)<eps) ;
                         faceNodIdx = [f1(:) f2(:) f3(:) f4(:)]' ;
                     % Edges

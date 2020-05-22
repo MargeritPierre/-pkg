@@ -1,4 +1,4 @@
-function [pp,dist] = closestPoint(PQ,P,method)
+function [pp,sqdist] = closestPoint(PQ,P,method)
 %CLOSESTPOINT Return the indices of the closest points P to PQ
 % Chooses the fastest method between direct vectorization, loop over P or
 % loop over PQ
@@ -45,14 +45,14 @@ if method == 1 || (test && arraySize<=maxArraySize)
     
     PQ = reshape(PQ,[nPQ 1 nCoord]) ; % [nPQ 1 nCoord]
     P = reshape(P,[1 nP nCoord]) ; % [1 nP nCoord]
-    [dist,pp] = min(sum((PQ-P).^2,3),[],2) ; % [nPQ 1]
+    [sqdist,pp] = min(sum((PQ-P).^2,3),[],2) ; % [nPQ 1]
     
     if test ; disp(['  1|vectorized: ' num2str(toc*1000,3) ' ms']) ; 
     else ; return ; end
 end
 
 % Initialize for loops
-dist = NaN(nPQ,1) ;
+sqdist = NaN(nPQ,1) ;
 pp = ones(nPQ,1) ;
 PQ = reshape(PQ,[nPQ nCoord]) ; % [nPQ nCoord]
 P = reshape(P,[nP nCoord]) ; % [nP nCoord]
@@ -62,7 +62,7 @@ if method == 2 || test
     if test ; tic ; end
     
     for ii = 1:nPQ
-        [dist(ii),pp(ii)] = min(sum((PQ(ii,:)-P).^2,2)) ;
+        [sqdist(ii),pp(ii)] = min(sum((PQ(ii,:)-P).^2,2)) ;
     end
     
     if test ; disp(['  2|loop.PQ: ' num2str(toc*1000,3) ' ms']) ; 
@@ -75,9 +75,9 @@ if method == 1 || test
     
     for ii = 1:nP
         newDist = sum((PQ-P(ii,:)).^2,2) ;
-        jj = find(newDist<dist) ;
+        jj = find(newDist<sqdist) ;
         pp(jj) = ii ;
-        dist(jj) = newDist(jj) ; 
+        sqdist(jj) = newDist(jj) ; 
     end
     
     if test ; disp(['  3|loop.P: ' num2str(toc*1000,3) ' ms']) ; 

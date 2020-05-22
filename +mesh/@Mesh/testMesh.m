@@ -94,6 +94,26 @@ mesh.rotate([10 20 30 45]*pi/180,[1 1]*0) ;
 
 h2 = plot(mesh) ;
 
+%% POINTS INSIDE AN ELEMENT
+
+elmt = pkg.mesh.elements.LagrangeElement('tet',2) ;
+
+bbox = elmt.localCoordinatesDomain ;
+bbox = bbox + 0.5*range(bbox,1).*[-1; 1] ; % extend bbox
+E = (rand(1000000,elmt.nDims).*range(bbox,1))+bbox(1,:) ;
+tol = 1e-9 ;
+
+tic ;
+[in,on] = elmt.isInside(E,tol) ;
+toc
+
+clf ;
+h = plot(elmt) ;
+pIn = patch('vertices',E,'faces',find(in & ~on),'facecolor','none','edgecolor','none','marker','.','markeredgecolor','r','markersize',5) ;
+pOn = patch('vertices',E,'faces',find(on),'facecolor','none','edgecolor','none','marker','.','markeredgecolor','b','markersize',5) ;
+%pOut = patch('vertices',E,'faces',find(~in),'facecolor','none','edgecolor','none','marker','.','markeredgecolor','g','markersize',5) ;
+axis equal
+
 
 %% POINTS INSIDE THE MESH
 clc

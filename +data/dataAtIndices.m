@@ -7,7 +7,7 @@ function VAL = dataAtIndices(DATA,IND)
     szData = size(DATA) ;
     % Reshape the data
         nNodes = szData(1) ; 
-        szData = szData(:,end) ;
+        szData = szData(2:end) ;
         DATA = DATA(:,:) ;
     % Set the values
         valid = IND>0 & ~(IND>nNodes) ; % NaNs will return false also

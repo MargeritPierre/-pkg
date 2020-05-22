@@ -2,7 +2,7 @@ classdef Mesh < matlab.mixin.Copyable
 % The general mesh class
 
 
-%% CONSTRUCTOR / DESTRUCTOR
+%% CONSTRUCTOR / DESTRUCTOR / COPY / SAVE / LOAD
 methods
     function this = Mesh(varargin)
     % Class Constructor
@@ -36,6 +36,14 @@ methods
             % Assign
                 this.Elems.Types = elemTypes ;
         end
+    end
+end
+methods (Access = protected)
+    function mesh = copyElement(this)
+    % Retrun a copy of the object
+        mesh = copyElement@matlab.mixin.Copyable(this) ;
+        mesh.X = copy(this.X) ;
+        mesh.X.Mesh = mesh ;
     end
 end
 
@@ -146,9 +154,21 @@ methods
     end
 end
 
-
 %% BOUNDARIES
 methods
+
+    function outFace = outerFaces(this)
+    % Return an array of logical, true if the face is one an the outer surface
+    % The face is on an outer surface if it is linked to only one element
+        outFace = sum(this.elem2face,2)==1 ;
+    end
+
+    function outNod = outerNodes(this)
+    % Return an array of logical, true if the node is on an the outer surface
+    % The node is on an outer surface if it is linked to an outer face
+        outFace = outerFaces(this) ;
+        outNod = logical(this.face2node*outFace) ;
+    end
 
     function bndEdg = boundaryEdges(this)
     % Return an array of logical, true if the edge is on the boundary
@@ -163,29 +183,48 @@ methods
         bndNod = logical(this.edge2node*bndEdg) ;
     end
 
-    function [crv,asCell] = boundaryCurves(this)
+    function [crv,asCell,edgBndCrv] = boundaryCurves(this)
     % Return an array of node indices representing the sorted mesh boundaries
     % crv contains the nodes indices with the different curves
     % separated by NaNs
+    % asCells is the same but the node indices are in different cells
+    % crvEdg [1 this.nEdges] uint32 conatins the index of the bnd crv
+    % associated to each edge (==0 if interior edge) 
         if this.nElems==0 ; crv = {} ; return ; end
         % List of boundary edges
-            bndEdg = boundaryEdges(this) ;
-            nn = this.Edges.NodeIdx(bndEdg,:) ;
+            bndEdg = find(boundaryEdges(this)) ;
+            nn = this.Edges.NodeIdx(bndEdg,:) ; % boundary edge nodes
         % Scan the edges to build the curves
+            edgBndCrv = zeros(1,this.nEdges,'uint32') ;
             crv{1} = nn(1,:) ;
             nn(1,:) = [] ;
+            edgBndCrv(bndEdg(1)) = 1 ; 
+            bndEdg(1) = [] ;
             while ~isempty(nn)
-                % Find the next point
-                    [nextEdg,indNode] = find(nn==crv{end}(end)) ;
-                % If no next point found, create a new curve
+                % Find the next edge and associated end node
+                    [nextEdg,indNode] = find(nn==crv{end}(end),1,'first') ;
+                % If no next edge found, create a new curve
                     if isempty(nextEdg)
-                        crv{end+1} = nn(1,:) ;
-                        nn(1,:) = [] ;
-                % Otherwise, add it
-                    else
-                        crv{end} = [crv{end} nn(nextEdg(1),3-indNode(1))] ;
-                        nn(nextEdg(1),:) = [] ;
+                        crv{end+1} = [] ;
+                        nextEdg = 1 ;
+                        indNode = 0 ;
+%                         crv{end+1} = nn(1,:) ;
+%                         edgBndCrv(bndEdg(1)) = numel(crv) ; 
+%                         nn(1,:) = [] ;
+%                         bndEdg(1) = [] ;
                     end
+                % Remaining edge nodes that have to be added
+                    if indNode==0 ; addNodes = nn(nextEdg,1:end) ;
+                    elseif indNode==1 ; addNodes = nn(nextEdg,2:end) ;
+                    else ; addNodes = nn(nextEdg,indNode-1:-1:1) ; 
+                    end
+                    addNodes = addNodes(addNodes~=0) ;
+                % Add the nodes to the current curve
+                    crv{end} = [crv{end} addNodes] ;
+                    nn(nextEdg,:) = [] ;
+                % Set the edge boundary curve number
+                    edgBndCrv(bndEdg(nextEdg)) = numel(crv) ; 
+                    bndEdg(nextEdg) = [] ;
             end
         % Concatenate curves
             crv = reshape(crv,1,[]) ;
@@ -271,6 +310,7 @@ methods
     function mesh = sortElems(this,dir)
     % Sort the element nodes of a planar mesh in clockwise 
     % or counter-clockwise(==trigo) direction
+    % WARNING: only works with 1st order TRIS or QUADS !!!
         if ~this.isPlanar ; error('Cannot sort nodes of a non-planar mesh') ; end
         if nargin<2 ; dir = 'trigo' ; end
         if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
@@ -291,6 +331,9 @@ methods
             indSort = sub2ind(size(mesh.Elems.NodeIdx),repmat((1:mesh.nElems)',[1 mesh.nMaxNodesByElem]),indSort) ;
         % New element list
             mesh.Elems.NodeIdx = mesh.Elems.NodeIdx(indSort) ;
+        % Re-set 1st quads node order
+            isP1Quad = mesh.Elems.nNodes == 4 ;
+            mesh.Elems.NodeIdx(isP1Quad,:) = mesh.Elems.NodeIdx(isP1Quad,[1 2 4 3]) ;
     end
 end
 
@@ -298,21 +341,24 @@ end
 %% POINT LOCALIZATION & INTERPOLATION
 methods
     
-    function M = isInside(this,P,features,X,tol)
+    function [M,pp,ee] = isInside(this,P,features,X,tol,bboxOnly)
     % Detect points P inside mesh (features=[]) or mesh features
     % Return a sparse logical matrix M(ii,jj)=true if P(ii) is (on/in)side feature(jj)
     % P = [nPts nCoord] double
     % features = [] (default) or ElementTable like Elems, Faces or Edges
     % X can be used to give other node coordinates
     % tol is the tolerance
+    % bboxOnly can be used to check if a point is inside an element bbox
+    % (skip the localization+insideelmt steps)
         if nargin<3 ; features = [] ; end
         if nargin<4 ; X = this.X.Values ; end
         if nargin<5 ; tol = this.defaultTolerance(X) ; end
+        if nargin<6 ; bboxOnly = false ; end
         nPts = size(P,1) ;
     % Points in the global mesh bounding box ?
         globalBBox = [min(X,[],1) ; max(X,[],1)] ;
         in = all( P>=globalBBox(1,:)-tol & P<=globalBBox(2,:)+tol ,2) ;
-        pp = find(in) ;
+        pp = find(in) ; ee = [] ;
     % If no features are given, return the current values
         if isempty(features) ; M = sparse(pp,pp*0+1,true,nPts,1) ; return ; end
     % If no points are inside the mesh Bounding box, return an empty matrix
@@ -324,11 +370,9 @@ methods
         pp = pp(ppp) ;
     % Points in element bounding box ?
         [pp,ee] = inElmtBBox(this,P,features,X,tol,pp,ee) ;
-%         pp = pp(ppp) ;
-%         ee = ee(eee) ;
+        if bboxOnly ; M = logical(sparse(pp,ee,1,nPts,features.nElems)) ; return ; end
     % Build the matrix
-        II = unique([pp(:) ee(:)],'rows') ;
-        M = sparse(II(:,1),II(:,2),true,nPts,features.nElems) ;
+        M = logical(sparse(pp,ee,1,nPts,features.nElems)) ;
     end
     
     function [nn,dist] = closestNode(this,P,X)
@@ -337,7 +381,8 @@ methods
     % P = [nNodes nCoord] or [nNodes 1 nCoord]
     % nn = [nPts 1]
         if nargin<3 ; X = this.X.Values ; end
-        [nn,dist] = pkg.data.closestPoint(P,X) ;
+        [nn,sqdist] = pkg.data.closestPoint(P,X) ;
+        if nargout>1 ; dist = sqrt(sqdist) ; end
     end
     
     function [pp,ee] = inElmtBBox(this,P,features,X,tol,ip,ie)
@@ -370,26 +415,42 @@ methods
         end
     end
     
-    function [E] = localize(this,P,features,X,tol,ip,ie)
+    function [E,ie] = localize(this,P,features,extrap,X,tol,ip,ie)
     % Localize points P on the mesh. 
     % Returns the local coordinates corresponding to the feature's closest point
     % Find E = argmin(norm(features.evalAt(E)*X-P))
     % P = [nPts nCoord]
     % features = ElementTable: mesh Elems (default), Faces or Edges
+    % extrap = return point localization even outside the features (else E(outside,:) = NaN)
+    % extrap is by default false if (ip,ie) are not provided
     % X = [nNodes nCoord] (mesh.X by default)
     % tol: convergence tolerance
     % ip,ie = [nLocal 1] optionnal: restricts the test between P(ip) and features(ie)
     % E = [nPts nElems nMaxElemDim] or [nLocal nMaxElemDim]
         if nargin<3 ; features = this.Elems ; end
-        if nargin<4 ; X = this.X.Values ; end
-        if nargin<5 ; tol = this.defaultTolerance(X) ; end
+        if nargin<4 ; extrap = nargin<7 ; end
+        if nargin<5 ; X = this.X.Values ; end
+        if nargin<6 ; tol = this.defaultTolerance(X) ; end
+        if nargin==7 ; error('Point AND element indices couples (ip,ie) must be provided') ; end
         debug = false ;
         if debug ; pl0 = plot(P(:,1),P(:,2),'or') ; pl = plot(P(:,1)*NaN,P(:,2)*NaN,'.b') ; end
-    % By default, localize each point in each mesh feature
+    % Localization mode
+        if nargin>7 % Do what is asked, all inputs are available
+            mode = 'custom' ;
+        elseif extrap % Localize each point in each mesh feature
+            mode = 'allInAll' ;
+        else % Localize each point in the closest mesh features (bbox only)
+            mode = 'inBBox' ;
+        end
+    % If extrapolation is allowed, localize each point in each mesh feature
         nPts = size(P,1) ; nElems = features.nElems ;
-        if nargin<6 
-            ip = repmat(1:nPts,[1 nElems]) ; 
-            ie = repelem(1:nElems,nPts*ones(1,nElems)) ; 
+        switch mode
+            case 'custom' % Do what is asked, all inputs are available
+            case 'allInAll' % Do what is asked, all inputs are available
+                ip = repmat(1:nPts,[1 nElems]) ; 
+                ie = repelem(1:nElems,nPts*ones(1,nElems)) ; 
+            case 'inBBox'
+                [~,ip,ie] = isInside(this,P,features,X,tol,true) ; % true for bboxOnly
         end
         nLocal = numel(ip) ;
     % Reshape the list of points
@@ -403,8 +464,8 @@ methods
             elmtType = features.Types(typeIdx) ; % The type of feature to deal with
             % Find the corresponding element indices
                 elmtIdx = find(features.TypeIdx==typeIdx) ; % The indices in the feature list
-                [valid,ii] = ismember(ie,elmtIdx) ; % Keep only elements of interest
-                elmtIdx = elmtIdx(ii(valid)) ; % The element indices we will have to deal with
+                [isType,ii] = ismember(ie,elmtIdx) ; % Keep only elements of interest
+                elmtIdx = elmtIdx(ii(isType)) ; % The element indices we will have to deal with
                 nE = length(elmtIdx) ;
             % Retrieve the element node coordinates
                 xe = Xe(elmtIdx,1:elmtType.nNodes,:) ; % [nE nElmtNodes nCoord]
@@ -429,7 +490,7 @@ methods
                     dx_de = permute(dx_de,[1 4 2 3]) ; % [nCoord nElmtDims nE]
                     if methodOrder>1 ; d2x_de2 = permute(d2x_de2,[1 4 5 2 3]) ; end % [nCoord nElmtDims nElmtDims nE]
                 % Residue check
-                    res = x-P(:,valid) ; % [nCoord nE]
+                    res = x-P(:,isType) ; % [nCoord nE]
                     notConverged = find(sum(res.^2,1)>tol^2) ;
                     if isempty(notConverged) ; break ; end
                 % Update points where it needs to be
@@ -445,10 +506,16 @@ methods
                     end
                 end
             % Assign
-                E(valid,:) = e ;
+                E(isType,:) = e ;
+            % If not extrapolating, check that E correspond to local
+            % coordinate INSIDE the element
+                if ~extrap
+                    outside = ~elmtType.isInside(E(isType,:)) ;
+                    E(isType & outside,:) = NaN ;
+                end
         end
     % Reshape if needed
-        if nargin<6 ; E = reshape(E,nPts,nElems,[]) ; end
+        if strcmp(mode,'allInAll') ; E = reshape(E,nPts,nElems,[]) ; end
         if debug ; delete(pl0) ; delete(pl) ; end
     end
     
@@ -459,7 +526,7 @@ methods
 
     function mesh = plus(this,mesh2)
     % Addition of two meshes (NEED CLEANUP TO WELD THE MESHES!)
-        if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
+        mesh = copy(this) ; % Always take a copy
         % New mesh coordinates values
             nNodes = this.nNodes + mesh2.nNodes ;
             x = NaN(nNodes,max(this.nCoord,mesh2.nCoord)) ;
@@ -467,7 +534,7 @@ methods
             x(this.nNodes+1:end,1:mesh2.nCoord) = mesh2.X.Values ;
         % New element table
             elems = [this.Elems mesh2.Elems] ;
-            elems.NodeIdx(this.nElems+1:end) = elems.NodeIdx(this.nElems+1:end) + this.nNodes ;
+            elems.NodeIdx(this.nElems+1:end,:) = elems.NodeIdx(this.nElems+1:end,:) + this.nNodes ;
         % Return/Modify the mesh
             mesh.X = x ; 
             mesh.Elems = elems ;
@@ -481,6 +548,68 @@ methods
         elems = repmat(this.Elems,[N 1])  ; 
         elems.NodeIdx = elems.NodeIdx + kron((0:N-1)',ones(this.nElems,1)) ;
         mesh.Elems = elems ;
+    end
+    
+    function meshes = splitParts(this)
+    % Split the independent parts of a mesh into several-meshes
+        e2n = this.elem2node ;
+        e2e = e2n'*e2n ;
+        meshes = pkg.mesh.Mesh.empty ;
+        elems = this.Elems ;
+        while ~isempty(e2e)
+            belong = e2e\sparse(1,1,1,size(e2e,1),1)~=0 ;
+            belongElems = pkg.mesh.elements.ElementTable('Types',this.Elems.Types,'Indices',this.Elems.Indices(belong,:)) ;
+            meshes(end+1) = pkg.mesh.Mesh('X',this.X.Values,'Elems',belongElems) ;
+            elems.Indices = elems.Indices(~belong,:) ;
+            e2e = e2e(~belong,~belong) ;
+        end
+    end
+    
+    function mesh = merge(this,mesh2,tol)
+    % Merge two meshes (WIP) [need mesh cleanup after that]
+        if nargin<3 ; tol = this.defaultTolerance ; end
+    % Find the closest nodes
+        % Reduce to bounding boxes
+            bboxThis = [min(this.X.Values,[],1) ; max(this.X.Values,[],1)] + 1.2*[-1 ; 1]*tol ;
+            bboxMesh2 = [min(mesh2.X.Values,[],1) ; max(mesh2.X.Values,[],1)] + 1.2*[-1 ; 1]*tol ;
+            thisNodesInMesh2 = find(all(this.X.Values>=bboxMesh2(1,:) & this.X.Values<=bboxMesh2(2,:),2)) ;
+            mesh2NodesInThis = find(all(mesh2.X.Values>=bboxThis(1,:) & mesh2.X.Values<=bboxThis(2,:),2)) ;
+        % Compute the distances
+            sqDist = sum((permute(mesh2.X.Values(mesh2NodesInThis,:),[1 3 2])-permute(this.X.Values(thisNodesInMesh2,:),[3 1 2])).^2,3) ;
+            [nodMesh2,nodThis] = find(sqDist<=tol.^2) ; % all pairs of close nodes
+            sqDist = sqDist(sub2ind(size(sqDist),nodMesh2,nodThis)) ;
+        % Convert to global numerotation (including out-of-bbox)
+            nodThis = thisNodesInMesh2(nodThis) ;
+            nodMesh2 = mesh2NodesInThis(nodMesh2) ;
+    % Do not merge multiple nodes with one node (!!!)
+        % Sort by increasing distance
+            [~,indSort] = sort(sqDist,'ascend') ;
+            nodMesh2 = nodMesh2(indSort) ; 
+            nodThis = nodThis(indSort) ;
+        % Take only the closest node that is not already taken
+            [nodThis,nn] = unique(nodThis,'stable') ;
+            nodMesh2 = nodMesh2(nn) ;
+            [nodMesh2,nn] = unique(nodMesh2,'stable') ;
+            nodThis = nodThis(nn) ;
+    % Merge Nodes
+        newNodes = mean(cat(3,this.X.Values(nodThis,:),mesh2.X.Values(nodMesh2,:)),3) ;
+        % Complete list
+            x = [this.X.Values ; mesh2.X.Values] ;
+            newNodeIdx = 1:size(x,1) ;
+        % Replace merged nodes
+            x(nodThis,:) = newNodes ;
+            x(this.nNodes + nodMesh2,:) = newNodes ;
+        % Cull duplicates
+            newNodeIdx(this.nNodes + nodMesh2) = nodThis ;
+            newNodeIdx(setdiff(1:numel(newNodeIdx),this.nNodes+nodMesh2)) = 1:numel(newNodeIdx)-numel(nodMesh2) ;
+            x(this.nNodes + nodMesh2,:) = [] ;
+    % Merge elements
+        elems = [this.Elems ; mesh2.Elems] ; 
+        elems.NodeIdx(this.nElems+1:end,:) = elems.NodeIdx(this.nElems+1:end,:) + this.nNodes ;
+        newNodeIdx = [0 newNodeIdx] ;
+        elems.NodeIdx = newNodeIdx(elems.NodeIdx+1) ;
+    % Return the new mesh
+        mesh = pkg.mesh.Mesh('X',x,'Elems',elems) ;
     end
 
     function mesh = applyTransform(this,F,v)
@@ -552,6 +681,7 @@ methods
 
 end
 
+
 %% MESH CLEANUP
 methods
 
@@ -602,7 +732,7 @@ methods
 
     function iElems = invalidElems(this)
     % Detect invalid elements (some nodes are invalid)
-        iElems = any(this.Elems.NodeIdx>this.nNodes) ; % At least one node index too large
+        iElems = any(this.Elems.NodeIdx>this.nNodes,2) ; % At least one node index too large
         iElems = iElems | all(this.Elems.NodeIdx<=0,2) ; % All invalid indices
         % Contains invalid nodes
         iNodes = invalidNodes(this) ;
@@ -632,16 +762,16 @@ methods
         if nargin<2 ; tol = this.defaultTolerance ; end
         if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
     % Unique node indices list
-        [~,new,old] = uniquetol(mesh.Nodes,tol,'ByRows',true,'DataScale', 1) ;
+        [~,new,old] = uniquetol(mesh.X.Values,tol,'ByRows',true,'DataScale', 1) ;
     % Take the barycenter for duplicates groups
         meanMat = sparse(old,1:numel(old),1,numel(new),numel(old)) ;
         meanMat = sparse(1:numel(new),1:numel(new),1./sum(meanMat,2))*meanMat ;
     % Return moved node if needed
-        if nargout>1 ; nodesMoved = mesh.Nodes(any(mod(meanMat,1),1),:) ; end
+        if nargout>1 ; nodesMoved = mesh.X.Values(any(mod(meanMat,1),1),:) ; end
     % Change the node list
-        mesh.Nodes = meanMat*mesh.Nodes ;
+        mesh.X.Values = meanMat*mesh.X.Values ;
     % New element list
-        mesh.Elems = mesh.list2Points(mesh.Elems,old);
+        mesh.Elems.NodeIdx = mesh.Elems.dataAtIndices(old);
     end
 
 end
@@ -653,6 +783,8 @@ methods % Functions defined in external files
     mesh = LaplacianSmoothing(this,lmbda,iterations,tol)
     % Mesh Subdivision
     mesh = CatmullClark(this,iter)
+    % Change element types
+    mesh = setElementTypes(this,types)
     % Change element order (works for Lagrange elements only)
     mesh = setElementOrder(this,order)
 end
