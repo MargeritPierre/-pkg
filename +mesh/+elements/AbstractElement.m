@@ -167,11 +167,6 @@ methods
                     dx_de = sum(dN_de.*permute(nodes(ff,1:face.nNodes,:),[3 2 1]),2) ; % [this.nDims 1 face.nDims(==2)] 
                     T(:,:,ff) = squeeze(dx_de) ; % [nDims 2 1]
                 end
-%                 tangents = permute(diff(nodes,1,2),[2 3 1]) ; % All tangent vectors [nMaxNodesByFeature-1 nDims nFeatures]
-%                 nNodesByFeature = sum(~isnan(nodes(:,:,1)),2) ; % [nFeatures 1]
-%                 t1 = tangents(1,:,:) ; % First tangent vector [1 nDims nFeatures]
-%                 t2 = sum(tangents.*permute(full(sparse(nNodesByFeature-1,1:features.nElems,1)),[1 3 2]),1) ; % Second tangent vector [1 nDims nFeatures]
-%                 normals = [t1(1,2,:).*t2(1,3,:)-t1(1,3,:).*t2(1,2,:) t1(1,3,:).*t2(1,1,:)-t1(1,1,:).*t2(1,3,:) t1(1,1,:).*t2(1,2,:)-t1(1,2,:).*t2(1,1,:)] ;
                 normals = [T(2,1,:).*T(3,2,:)-T(3,1,:).*T(2,2,:) T(3,1,:).*T(1,2,:)-T(1,1,:).*T(3,2,:) T(1,1,:).*T(2,2,:)-T(2,1,:).*T(1,2,:)] ; % [1 nDims nFeatures]
             end
             vect = E(in,:)-midNode ; % vect(edgecenters->E) [nE nDims nFeatures]
@@ -245,31 +240,36 @@ methods
     function H = plotShapeFunctions(this,fig)
     % Plot the shape functions in the current figure
         if nargin<2 ; fig = gcf ; end
-        subdiv = 100*ones(1,this.nDims) ; % Number of Subdivisions
+        subdiv = 25*ones(1,this.nDims) ; % Number of Subdivisions
         switch this.nDims % Displayed derivation orders
             case 1
                 ORD = [0;1;2] ;
             case 2
                 ORD = [0 0 ; 1 0 ; 0 1 ; 2 0 ; 0 2 ; 1 1] ;
             case 3
+                ORD = [0 0 0 ; 1 0 0 ; 0 1 0 ; 0 0 1] ;
         end
         % Local coordinates
             bbox = this.localCoordinatesDomain ;
             E = arrayfun(@(dim)linspace(bbox(1,dim),bbox(2,dim),subdiv(dim)),1:this.nDims,'UniformOutput',false) ;
             if numel(E)>1 ; [E{:}] = ndgrid(E{:}) ; end
             EE = cat(this.nDims+1,E{:}) ;
+        % Delete points outside the element
+            e = reshape(EE,[],this.nDims) ;
+            e(~isInside(this,e)) = NaN ;
+            EE = reshape(e,size(EE)) ;
         % Figure
             clf(fig) ;
             H = gobjects(0) ;
             ax = gobjects(0) ;
             lin = gobjects(0) ;
             srf = gobjects(0) ;
+            scat = gobjects(0) ;
             ttl = gobjects(0) ;
          % For each derivation order
             nOrd = size(ORD,1) ;
             for oo = 1:nOrd
                 % Evaluate the shape function derivatives
-                    e = reshape(EE,[],this.nDims) ;
                     N = this.evalDerivativeAt(e,ORD(oo,:)) ;
                     NN = reshape(N,[subdiv this.nNodes]) ;
                 % For each shape function
@@ -285,13 +285,14 @@ methods
                             set(findobj(H,'type','patch'),'FaceColor','none')
                         % Highlight the current node only
                             set(findobj(H,'type','patch','-not','marker','none'),'Faces',nn)
-                        % Highlight the current point
+                        % Plot the shape function/derivative
                             switch this.nDims
                                 case 1
                                     lin(end+1) = plot(ax(end),EE(:,:,1),NN(:,nn)) ;
                                 case 2
                                     srf(end+1) = surf(ax(end),EE(:,:,1),EE(:,:,2),NN(:,:,nn),NN(:,:,nn)) ;
                                 case 3
+                                    scat(end+1) = scatter3(e(:,1),e(:,2),e(:,3),10,N(:,nn)) ;
                                 otherwise % ???
                             end
                         % Add a title
