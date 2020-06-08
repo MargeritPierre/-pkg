@@ -39,6 +39,9 @@ function H = editContext(obj,varargin)
     fig = ancestor(obj,'figure') ;
     ui = uicontextmenu(fig) ;
     
+% Make a title menu
+    createHeaderMenu(obj,ui) ;
+    
 % Create the menu tree
     sm = createMenuTree(propNames,ui) ;
     
@@ -46,6 +49,7 @@ function H = editContext(obj,varargin)
     addmenus(obj,propNames,sm) ;
 
 % Add the menu to the handles
+    ui.Children(end-1).Separator = 'on' ;
     obj.UIContextMenu = ui ;
     H(end+1) = ui ;
 
@@ -82,6 +86,31 @@ function setProp(obj,propName)
     newValue = str2num(answer{1}) ;
     if isempty(newValue) ; newValue = answer{1} ; end
     obj.(propName) = newValue ;
+end
+
+function m = createHeaderMenu(obj,ui)
+% Add a header menu to the uicontextmenu
+    % Header text
+        ttl = obj.Type ;
+        ttl(1) = upper(ttl(1)) ;
+        ttl = ['<u>' ttl '</u>'] ;
+        if isprop(obj,'DisplayName') 
+            tag = obj.DisplayName ;
+        elseif isprop(obj,'Name')
+            tag = obj.Name ;
+        elseif isprop(obj,'Tag')
+            tag = obj.Tag ;
+        end
+        if ~isempty(tag) ; ttl = [ttl ' (<b>' tag '</b>)'] ; end
+        ttl = ['<html><font>' ttl '</font></html>'] ;
+    % Menu
+        m = uimenu(ui,'Text',ttl,'Callback',@toWorkspace,'UserData',obj) ;
+end
+
+function toWorkspace(src,~)
+% Return the object associated to a menu to the workspace
+    assignin('base','ans',src.UserData) ; 
+    evalin('base','ans') ;
 end
 
 function sm = createMenuTree(propNames,ui)

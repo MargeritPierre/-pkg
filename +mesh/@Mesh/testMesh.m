@@ -37,15 +37,16 @@ axis equal
 
 %% LAPLACIAN SMOOTHING
 
-lmbda = [1 0.01] ;
+lmbda = [5/10 0/10] ;
 iterations = 1000 ;
 tol = 1e-9 ;
+mesh.sortElems ;
 
 tic
-mesh.LaplacianSmoothing(lmbda,iterations,tol) ;
+mesh2 = mesh.LaplacianSmoothing(lmbda,iterations,tol) ;
 toc
 cla ;
-h = plot(mesh) ;
+h = plot(mesh2) ;
 
 
 %% CATMULL-CLARK SUBDIVISION

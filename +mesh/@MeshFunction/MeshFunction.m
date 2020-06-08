@@ -56,7 +56,7 @@ methods
                     this.Values(end+1:this.Mesh.nNodes,:) = NaN ;
                 elseif this.Mesh.nNodes < size(this.Values,1)
                 % Deleted nodes, remove values
-                    this.Values(this.Mesh.nNodes:end,:) = NaN ;
+                    this.Values(this.Mesh.nNodes+1:end,:) = [] ; % NaN ;
                 end
 %             otherwise
 %         end

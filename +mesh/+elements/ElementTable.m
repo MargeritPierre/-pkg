@@ -23,7 +23,7 @@ end
 methods  
     % Number of elements in the table
     function val = nElems(this) ;  [val,~] = cellfun(@size,{this.Indices}) ; end
-    % Number of elements in the table
+    % Number of elements types in the list
     function val = nTypes(this) ;  val = cellfun(@numel,{this.Types}) ; end
     % Number of nodes in each element
     function val = nNodes(this) ; val = sum(this.NodeIdx>0,2) ; end
@@ -31,6 +31,8 @@ methods
     function val = nMaxNodesByElem(this) ;  [~,val] = cellfun(@size,{this.Indices}) ; val = val-1 ; end % Minus one because of the presence of TypeIdx
     % Unique list of node indices
     function val = uniqueNodeIdx(this) ; val = unique(this.NodeIdx(this.NodeIdx~=0)) ; end
+    % Is the table empty
+    function empty = isempty(this) ; empty = this.nElems==0 ; end
 end
 
 %% CONSTRUCTOR
@@ -160,15 +162,17 @@ methods
     function M = sparse(this,values)
     % Return a sparse matrix containing values of different kinds
         if nargin<2 ; values = 'logical' ; end
-        switch values
-            case 'logical' % M(ii,jj) = true if ismember(ii,this.NodeIdx(jj,:))
-                vvv = true(size(this.NodeIdx)) ;
-            case 'indices' % M(ii,jj) = find(this.NodeIdx(jj,:)==ii) ;
-                vvv = repmat(1:this.nMaxNodesByElem,[this.nElems 1]) ;
-            case 'mean' % Used to compute the mean of nodal values on each element
-                vvv =  true(size(this.NodeIdx)) ;
-            otherwise % User-custom values
-                vvv = values(:) + zeros(numel(this.NodeIdx)) ;
+        if isnumeric(values) % User customized values
+            vvv = values + zeros(size(this.NodeIdx)) ;
+        else
+                switch values
+                    case 'logical' % M(ii,jj) = true if ismember(ii,this.NodeIdx(jj,:))
+                        vvv = true(size(this.NodeIdx)) ;
+                    case 'indices' % M(ii,jj) = find(this.NodeIdx(jj,:)==ii) ;
+                        vvv = repmat(1:this.nMaxNodesByElem,[this.nElems 1]) ;
+                    case 'mean' % Used to compute the mean of nodal values on each element
+                        vvv =  true(size(this.NodeIdx)) ;
+                end
         end
     % Integers are the indice of the node in the elem list
         valid = this.NodeIdx>0 ;
@@ -181,11 +185,15 @@ methods
     function M = contains(this,features)
     % Return a sparse matrix of logical values
     % M(i,j) = true if this(j,:) contains features(i,:)
+        if features.nElems==0 || this.nElems==0
+            M = sparse(features.nElems,this.nElems) ; 
+            return ;
+        end
     % The test uses the number of shared node indices
         nNodes = [0 features.Types.nNodes] ;
         nNodes = nNodes(features.TypeIdx+1) ;
     % Shared number of nodes between tables (sparse matrix)
-        M = logical(features.sparse)'*logical(this.sparse) ;
+        M = features.sparse('logical')'*this.sparse('logical') ;
     % Nonzeros
         [ii,jj,vv] = find(M) ;
     % Contains
@@ -409,10 +417,14 @@ methods
     % Concatenate element tables to an unique table
     % Convert to tables
         tables = cellfun(@pkg.mesh.elements.ElementTable,varargin) ;
-    % Concatenate Indices
-        [indices,ta] = catIndices(tables) ;
     % Concatenate Element Types
         types = cat(1,tables.Types) ;
+    % Concatenate Indices
+        [indices,ta] = catIndices(tables) ;
+        if isempty(indices)
+            table = pkg.mesh.elements.ElementTable('Types',types) ; 
+            return ; 
+        end
     % Change Element Type Indices 
         nTypesInTable = [tables.nTypes] ;
         nTypesInPreviousTables = [0 cumsum(nTypesInTable)] ;
@@ -432,6 +444,16 @@ methods
         if nargin==2 ; nRep = prod(varargin{1}) ; end
         if nargin>2 ; nRep = prod(cat(2,varargin{:})) ; end
         table = pkg.mesh.elements.ElementTable('Types',this.Types,'Indices',repmat(this.Indices,[nRep 1])) ;
+    end
+end
+
+
+%% ELEMENT IDENTIFICATION
+methods
+    function bool = isP1Quad(this)
+    % Return true for each LagrangeElement('quad',1) in the table
+        bool = this.Types.isP1Quad ;
+        bool = ismember(this.TypeIdx,find(bool)) ;
     end
 end
 

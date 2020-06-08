@@ -44,7 +44,7 @@ methods (Sealed)
         val = [e zeros(size(e,1),3-size(e,2))] ;
     end
     % Circumcenter
-    function C = circumcenter(this) ; C = mean(this.NodeLocalCoordinates,1) ; end
+    function C = circumcenter(this) ; C = permute(mean(cat(3,this.NodeLocalCoordinates),1),[3 2 1]) ; end
 end
 
 %% SHAPE FUNCTIONS DERIVATIVES
@@ -315,6 +315,19 @@ methods
             colormap(jet(11)) ;
             end
             set(ttl,'Interpreter','tex','units','normalized','position',[0.5 0.5 0]) ;
+    end
+end
+
+%% ELEMENT IDENTIFICATION FUNCTION
+methods
+    function bool = isP1Quad(elems)
+    % Return true for LagrangeElements('quad',1)
+    % Useful to switch node numbering from trigo to P1 quad nodes
+        elems = elems(:)' ;
+        bool = [elems.nNodes] == 4 ; 
+        if any(bool) ; bool = bool & arrayfun(@(e)isa(e,'pkg.mesh.elements.LagrangeElement'),elems) ; end
+        if any(bool) ; bool(bool) = bool(bool) & [elems(bool).Order]==1 ; end
+        if any(bool) ; bool(bool) = bool(bool) & strcmp({elems(bool).Geometry},'quad') ; end
     end
 end
 

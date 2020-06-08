@@ -145,6 +145,9 @@ classdef LagrangeElement < pkg.mesh.elements.AbstractElement
             % Assign
                 if this.nDims>1 ; this.Faces = pkg.mesh.elements.ElementTable('Types',faceElemType,'NodeIdx',faceNodIdx) ; end
                 this.Edges = pkg.mesh.elements.ElementTable('Types',edgeElemType,'NodeIdx',edgeNodIdx) ;
+        % GAUSS QUADRATURE POINTS (<TODO> find true Gauss points) 
+            this.GaussIntegrationPoints = 0.25*[1 1 ; 3 1 ; 3 3 ; 1 3] ;
+            this.GaussIntegrationWeights = ones(size(this.GaussIntegrationPoints,1),1)/size(this.GaussIntegrationPoints,1) ;
         end
         
         function createSimplexElement(this,NDIMS,ORDER)
@@ -198,6 +201,9 @@ classdef LagrangeElement < pkg.mesh.elements.AbstractElement
             % Assign
                 this.Faces = pkg.mesh.elements.ElementTable('Types',faceElemType,'NodeIdx',faceNodIdx) ;
                 this.Edges = pkg.mesh.elements.ElementTable('Types',edgeElemType,'NodeIdx',edgeNodIdx) ;
+        % GAUSS QUADRATURE POINTS (<TODO> find true Gauss points) 
+            this.GaussIntegrationPoints = this.circumcenter ;
+            this.GaussIntegrationWeights = (1/factorial(this.nDims))*ones(size(this.GaussIntegrationPoints,1),1)/size(this.GaussIntegrationPoints,1) ;
         end
     end
     

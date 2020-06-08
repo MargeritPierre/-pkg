@@ -20,21 +20,7 @@ methods
         end
     % Default element types
         if isempty(this.Elems.Types)
-            % Count nodes in each element
-                nNodesInElems = this.Elems.nNodes ;
-            % Mesh Dimensions
-                if isPlanar(this) ; geo = {'tri' 'quad'} ;
-                else ; geo = {'tet' 'hex'} ; end
-            % Create the list of possible elements
-                elemTypes = pkg.mesh.elements.AbstractElement.empty ;
-                for gg = 1:numel(geo)
-                    for order = 1:3
-                        elmt =  pkg.mesh.elements.LagrangeElement(geo{gg},order) ;
-                        if ismember(elmt.nNodes,nNodesInElems) ; elemTypes(end+1) = elmt ; end
-                    end
-                end
-            % Assign
-                this.Elems.Types = elemTypes ;
+            this.assignElements('auto') ;
         end
     end
 end
@@ -65,16 +51,18 @@ methods
                 if ~ismatrix(elems) ; error('wrong format: must be [nElems nMaxNodesByElems]') ; end
                 elems = uint32(elems) ;
                 if ~isempty(this.Elems.Types)
-                    elems = pkg.mesh.elements.ElementTable('Indices',elems,'Types',this.Elems.Types) ;
+                    elems = pkg.mesh.elements.ElementTable('Types',this.Elems.Types,'Indices',elems) ;
                 else
-                    elems = pkg.mesh.elements.ElementTable('NodeIdx',elems,'Types',this.Elems.Types) ;
+                    elems = pkg.mesh.elements.ElementTable('Types',this.Elems.Types,'NodeIdx',elems) ;
                 end
         end
     % Clean the element list
-        elems = clean(elems) ;
-    % Set mesh features
-        this.Faces = elems.getTableOfUnique('Faces') ;
-        this.Edges = elems.getTableOfUnique('Edges') ;
+        %elems = clean(elems) ; % on mesh cleanup only
+    % Erase mesh feature lists | 
+    % will be computed the first time its needed
+    % (see get.Faces/Edges below)
+        this.Faces = [] ; %elems.getTableOfUnique('Faces') ;
+        this.Edges = [] ; %elems.getTableOfUnique('Edges') ;
     % Set
         this.Elems = elems ;
     end
@@ -90,6 +78,29 @@ methods
                 this.X.Values = values ;
         end
     end
+    
+    function assignElements(this,types)
+    % Automatically assign elements types to the mesh
+        if nargin<2 ; types = 'auto' ; end
+    % Process types options
+        if ischar(types)
+            switch types
+                case 'auto' % Preset list of base elements
+                    if isPlanar(this) ; geo = {'Bar' 'Triangle' 'Quadrangle'} ;
+                    else ; geo = {'Bar' 'Tetrahedron' 'Hexahedron' 'Prism' 'Pyramid'} ; end
+                    types = pkg.mesh.elements.AbstractElement.empty ;
+                    for tt = 1:numel(geo) ; types(end+1) = eval(['pkg.mesh.elements.base.' geo{tt}]) ; end
+                otherwise
+                    error('Unsupported option for element types.') ;
+            end
+        end
+    % Count nodes in each existing element
+        nNodesInElems = this.Elems.nNodes ;
+    % Check that types match node numbers
+        valid = arrayfun(@(t)ismember(t.nNodes,nNodesInElems),types) ;
+    % Assign
+        this.Elems.Types = types(valid) ;
+    end
 end
 
 
@@ -99,6 +110,20 @@ properties (SetAccess = private)
     Faces pkg.mesh.elements.ElementTable
     % Table of edges
     Edges pkg.mesh.elements.ElementTable
+end
+methods % Compute the faces & edges only when needed
+    function edges = get.Edges(this)
+        if isempty(this.Edges)
+            this.Edges = this.Elems.getTableOfUnique('Edges') ; 
+        end
+        edges = this.Edges ;
+    end
+    function faces = get.Faces(this)
+        if isempty(this.Faces) 
+            this.Faces = this.Elems.getTableOfUnique('Faces') ; 
+        end
+        faces = this.Faces ;
+    end
 end
 
 
@@ -156,24 +181,39 @@ end
 
 %% BOUNDARIES
 methods
+    
+    function ends = endNodes(this)
+    % Return an array of logical, true if the node is an end node
+    % A END node belongs to one or less elements
+        ends = sum(this.elem2node,2)<=1 ;
+    end
 
     function outFace = outerFaces(this)
     % Return an array of logical, true if the face is one an the outer surface
-    % The face is on an outer surface if it is linked to only one element
-        outFace = sum(this.elem2face,2)==1 ;
+    % The face is on an outer surface if it is linked to one element at most
+        outFace = sum(this.elem2face,2)<=1 ;
     end
 
     function outNod = outerNodes(this)
     % Return an array of logical, true if the node is on an the outer surface
-    % The node is on an outer surface if it is linked to an outer face
-        outFace = outerFaces(this) ;
-        outNod = logical(this.face2node*outFace) ;
+    % The node is on an outer surface if it is linked to an outer edge or
+    % is an end node
+        outNod = logical(this.edge2node*outerEdges(this)) ;
+        outNod = outNod | this.endNodes ;
+    end
+
+    function outEdg = outerEdges(this)
+    % Return an array of logical, true if the edge is on the outer surface
+    % The edge is on the surface if it is linked to an outer face
+    % or is a boundary edge
+        outEdg = logical(this.face2edge*outerFaces(this)) ;
+        outEdg = outEdg | this.boundaryEdges ;
     end
 
     function bndEdg = boundaryEdges(this)
     % Return an array of logical, true if the edge is on the boundary
-    % The edge is on the boundary if it is linked to only one element
-        bndEdg = sum(this.elem2edge,2)==1 ;
+    % The edge is on the boundary if it is linked to at most one element
+        bndEdg = sum(this.elem2edge,2)<=1 ;
     end
 
     function bndNod = boundaryNodes(this)
@@ -208,10 +248,6 @@ methods
                         crv{end+1} = [] ;
                         nextEdg = 1 ;
                         indNode = 0 ;
-%                         crv{end+1} = nn(1,:) ;
-%                         edgBndCrv(bndEdg(1)) = numel(crv) ; 
-%                         nn(1,:) = [] ;
-%                         bndEdg(1) = [] ;
                     end
                 % Remaining edge nodes that have to be added
                     if indNode==0 ; addNodes = nn(nextEdg,1:end) ;
@@ -276,7 +312,7 @@ methods
                 normal = frame(end,:) ;
     end
 
-    function [normals,frames] = faceNormals(this)
+    function [normals,frames] = faceNormals_old(this)
     % Return an array containing the face normals
     % NORMALS size: [nFaces 3]
     % Also return the face frames if needed
@@ -306,6 +342,60 @@ methods
                     normals(ff,:) = frames(ff,end,:) ;
             end
     end
+    
+    function [frames,normals] = faceFrames(this,E)
+    % Return the face frames of the mesh queried at local coordinates E
+    % E: [nFaces nFaceDims==2]
+    % frames: [nFaces 3 3] cat(3,x1,x2,normals)
+    % normals: [nFaces 3]
+        frames = NaN(this.Faces.nElems,3,3) ;
+        if this.Faces.nElems==0 ; return ; end
+        if nargin<2
+            E = [0 0 ; this.Faces.Types.circumcenter] ;
+            E = E(this.Faces.TypeIdx+1,:) ;
+        end
+        Xe = this.Faces.dataAtIndices(this.X.Values) ;
+        for tt = 1:this.Faces.nTypes
+            elemType = this.Faces.Types(tt) ;
+            elemIdx = this.Faces.TypeIdx==tt ;
+            J = elemType.evalJacobianAt(E(elemIdx,:)) ;
+        end
+        if nargin>1 ; normals = frames(:,:,3) ; end
+    end
+    
+    function [frames,normals] = edgeFrames(this,E)
+    % Return the edge frames of the mesh queried at local coordinates E
+    % E: [nEdges nEdgeDims==1]
+    % frames: [nEdges nCoord nCoord] cat(3,tangents,normals,(thirdvect))
+    % normals: [nEdges nCoord]
+        if this.Edges.nElems==0 ; return ; end
+        if nargin<2
+            E = [0 ; this.Edges.Types.circumcenter] ;
+            E = E(this.Edges.TypeIdx+1,:) ;
+        end
+    % Compute the tangents
+        tangents = NaN(this.Edges.nElems,this.nCoord) ;
+        Xe = this.Edges.dataAtIndices(this.X.Values) ; % [nEdges nMaxNodesInEdges nEdgeDims==1]
+        for tt = 1:this.Edges.nTypes
+            elemType = this.Edges.Types(tt) ;
+            elemIdx = this.Edges.TypeIdx==tt ;
+            xe = Xe(elemIdx,1:elemType.nNodes,:) ; % [nE nNodesInElem nCoord]
+            dN_de = elemType.evalJacobianAt(E(elemIdx,:)) ; % [nE nNodesInElem nEdgeDims==1]
+            tangents(elemIdx,:) = permute(sum(permute(dN_de,[1 2 4 3]).*xe,2),[1 3 4 2]) ; % [nE nCoord nEdgeDims==1]
+        end
+    % Normalize
+        tangents = tangents./sqrt(sum(tangents.^2,2)) ;
+    % Rotate 90° about z axis for the normals
+        if this.nCoord==3 ; normals = tangents*[0 -1 0 ; 1 0 0 ; 0 0 1] ;
+        else ; normals = tangents*[0 -1 ; 1 0] ;
+        end
+    % Full Frames
+        frames = cat(3,tangents,normals) ;
+    % Cross product for the third vector
+        if this.nCoord==3
+            frames(:,:,3) = tangents(:,[2 3 1]).*normals(:,[3 1 2]) - tangents(:,[3 1 2]).*normals(:,[2 3 1]) ;
+        end
+    end
 
     function mesh = sortElems(this,dir)
     % Sort the element nodes of a planar mesh in clockwise 
@@ -332,9 +422,29 @@ methods
         % New element list
             mesh.Elems.NodeIdx = mesh.Elems.NodeIdx(indSort) ;
         % Re-set 1st quads node order
-            isP1Quad = mesh.Elems.nNodes == 4 ;
-            mesh.Elems.NodeIdx(isP1Quad,:) = mesh.Elems.NodeIdx(isP1Quad,[1 2 4 3]) ;
+            Q4 = mesh.Elems.isP1Quad ; if any(Q4) ; mesh.Elems.NodeIdx(Q4,:) = mesh.Elems.NodeIdx(Q4,[1 2 4 3]) ; end
     end
+    
+    function sz = elemSize(this)
+    % Compute the typical size of each element
+    % 1D: length , 2D: area , 3D: volume
+    % <TODO> Generalize this function
+        sz = zeros(this.nElems,1) ;
+        Xe = this.Elems.dataAtIndices(this.X.Values) ;
+        isQ4 = this.Elems.isP1Quad ; if any(isQ4) ; Xe(isQ4,:,:) = Xe(isQ4,[1 2 4 3],:) ; end % Quad elements
+        sz = polyarea(Xe(:,:,1),Xe(:,:,2),2) ;
+%         for tt = 1:this.Elems.nTypes
+%             elmtIdx = this.Elems.TypeIdx==tt ;
+%             elmtType = this.Elems.Types(tt) ;
+%             dN_de = elmtType.evalJacobianAt(elmtType.GaussIntegrationPoints) ; % [nIntPts nNodesInElmt nElmtDims]
+%             dX_de = Xe(elmtIdx,1:elmtType.nNodes,:).*permute(dN_de,[4 2 5 3 1]) ; % [nElmt nNodesInElmt nCoord nElmtDims nIntPts]
+%             dX_de = sum(dX_de,2) ; % [nElmt 1 nCoord nElmtDims nIntPts]
+%             dX_de = sum(dX_de,4) ; % [nElmt 1 nCoord 1 nIntPts]
+%             dX_de = prod(dX_de,3) ; % [nElmt 1 1 1 nIntPts]
+%             sz(elmtIdx) = sum(permute(dX_de,[1 5 2 3 4]).*elmtType.GaussIntegrationWeights',2) ; % [nElmt 1]
+%         end
+    end
+    
 end
 
 
@@ -432,6 +542,7 @@ methods
         if nargin<5 ; X = this.X.Values ; end
         if nargin<6 ; tol = this.defaultTolerance(X) ; end
         if nargin==7 ; error('Point AND element indices couples (ip,ie) must be provided') ; end
+        itMax = 10 ;
         debug = false ;
         if debug ; pl0 = plot(P(:,1),P(:,2),'or') ; pl = plot(P(:,1)*NaN,P(:,2)*NaN,'.b') ; end
     % Localization mode
@@ -476,8 +587,9 @@ methods
                 else ; methodOrder = 2 ; end
                 e = repmat(e0,[nE 1]) ; % [nE nElmtNodes]
             % Loop until norm(x-P)<tol
-                notConverged = NaN ;
-                while ~isempty(notConverged)
+                notConverged = NaN ; it = 0 ;
+                while ~isempty(notConverged) && it<itMax
+                    it = it + 1 ;
                 % Shape function evalutation (+derivatives)
                     N = elmtType.evalAt(e) ; % [nE nElmtNodes]
                     dN_de = elmtType.evalJacobianAt(e) ; % [nE nElmtNodes nElmtDims]
@@ -627,7 +739,7 @@ methods
             dC = mesh.nCoord-nC ;
             if dC>0
                 O = zeros(nC,dC,N) ;
-                F = [F O ; permute(O,[2 1 3]) O(1:dC,1:dC,:)] ;
+                F = [F O ; permute(O,[2 1 3]) repmat(eye(dC),[1 1 N])] ;
                 v = [v O(1,:,:)] ;
             elseif dC<0
                 mesh.nCoord = nC ;
@@ -671,14 +783,192 @@ methods
             mesh.move(-CEN) ;
         % Compute the transformation matrix
             THETA = reshape(THETA(:),1,1,[]) ;
-            F = [cos(THETA) sin(THETA) ; -sin(THETA) cos(THETA)] ;
+            F = [cos(THETA) sin(THETA); -sin(THETA) cos(THETA)] ;
             if mesh.nCoord>2 ; F(end+1,end+1,:) = 1 ; end
         % Rotate
             mesh.applyTransform(F) ;
         % Re-move the mesh
             mesh.move(CEN) ;
     end
-
+    
+    function mesh = offset(this,DIST,fill)
+    % Offset 2D/3D mesh edges/faces
+    % DIST is the offset distances (can be negative)
+    % fill: (bool) set true when you want to create..
+    % ..a surface/volume from edges/faces
+    % fill: bool. false: just offset the mesh; true: fill with elements
+    % Check operation validity
+        if any(this.Elems.Types.nDims>3) ;  error('Cannot offset 3D elements') ; end
+        if ~(this.isPlanar && all(this.Elems.Types.nDims==1)) ... % Plane wire-only mesh ?
+           && ~all(this.Elems.Types.nDims==2) % Surface-only mesh ?
+            error('The mesh geometry is not offsettable.')
+        end
+    % Process inputs
+        if numel(DIST)==0 ; DIST = 0 ; end % should return the same mesh
+        if nargin<3 ; fill = numel(DIST)>1 ; end % fill by default
+        if fill && numel(DIST)==1 ; DIST = [0 ; DIST(:)] ; end % force the volume to be valid
+        DIST = sort(DIST(:),'ascend') ; 
+        nOfst = numel(DIST) ;
+    % Operate
+        % PLANE WIRE-ONLY MESH
+        if this.isPlanar && all(this.Elems.Types.nDims==1)
+            % Compute node normals
+                [~,edgeNormals] = edgeFrames(this) ;
+                nodeNormals = this.edge2node('mean')*edgeNormals ;
+            % Offset Nodes
+                x = repmat(this.X.Values,[nOfst 1]) + kron(DIST,nodeNormals) ;
+            % New element indices
+                nodeIdx = this.Elems.NodeIdx ; 
+                if nOfst>1 
+                    nodeIdx = repmat(nodeIdx,[nOfst 1]) + uint32(this.nNodes*kron((0:nOfst-1)',ones(this.nElems,1))) ; 
+                end
+            % Filled: Create quads from bars
+                if fill
+                    type = pkg.mesh.elements.base.Quadrangle ;
+                    nodeIdx = [nodeIdx(1:(nOfst-1)*this.nElems,:) flip(nodeIdx(this.nElems+1:nOfst*this.nElems,:),2)] ;
+                else
+                    type = this.Elems.Types(1) ;
+                end
+                elems = pkg.mesh.elements.ElementTable('Types',type,'Indices',[ones(size(nodeIdx,1),1) nodeIdx]) ;
+        % SURFACE-ONLY MESH
+        elseif all(this.Elems.Types.nDims==2) 
+            error('Surface offset is not implemented yet') ;
+        end
+    % Assign
+        if nargout==0 ; this.X = x ; this.Elems = elems ; 
+        else ; mesh = pkg.mesh.Mesh('X',x,'Elems',elems) ; 
+        end
+    end
+    
+    function mesh = sweep(this,CRV,mode)
+    % Create a sweep mesh geometry from a mesh and a curve
+    % CRV: [nPts nCoord]
+    % mode: 'angle' or 'parallel' (default)
+    %   - 'angle': the replicated meshes remain at the same angle w.r.t the curve
+    %   - 'parallel': all nodes are swept by the same curve (parallel edges)
+        if any(this.Elems.Types.nDims>3) ; error('Cannot offset 3D elements') ; end
+    % Process inputs
+        if nargin<3 ; mode = 'parallel' ; end
+        nPts = size(CRV,1) ;
+    % Initialize
+        x = this.X.Values ;
+        types = this.Elems.Types ;
+        indices = this.Elems.Indices ;
+    % Match Curve & nodes dimensions
+        nC = max(size(x,2),size(CRV,2)) ; % target nCoord
+        x = [x zeros(size(x,1),nC-size(x,2))] ;
+        CRV = [CRV zeros(size(CRV,1),nC-size(CRV,2))] ;
+    % Sweep nodes
+        switch mode
+            case 'parallel'
+                CRV = CRV-CRV(1,:) ;
+                x = repmat(x,[nPts 1]) + repelem(CRV,size(x,1),1) ;
+            case 'angle'
+                error('Angle mode not implemented yet') ;
+        end
+    % Sweep quads to hex
+        % Change quad types to hex
+            quadIdx = find(arrayfun(@(t)isa(t,'pkg.mesh.elements.base.Quadrangle'),types)) ;
+            types(quadIdx) = pkg.mesh.elements.base.Hexahedron ;
+        % Find elements that are bars
+            quadIdx = ismember(indices(:,1),quadIdx) ;
+        % Set the new indices
+            if any(quadIdx)
+                nQuads = sum(quadIdx) ;
+                % Extend the indices table if needed
+                    indices = [indices zeros(size(indices,1),9-size(indices,2),'uint32')] ; 
+                % Remove bars from indices
+                    idx = indices(quadIdx,:) ; % keep a copy
+                    indices = indices(~quadIdx,:) ; % delete the bars
+                % Sweep bars
+                    idx = repmat(idx,[nPts 1]) + uint32( [0 1 1 1 1 1 1 1 1].*repelem((0:nPts-1)',nQuads,1)*this.nNodes ) ;
+                % Convert to quads [typeIdx n1 n2 n3 n4 n1' n2' n3' n4']
+                    idx = [idx(1:(nPts-1)*nQuads,1) idx(1:(nPts-1)*nQuads,2:5) idx(nQuads+1:nPts*nQuads,2:5)] ;
+                % Push in the indices list
+                    indices = [indices ; [idx zeros(size(idx,1),size(indices,2)-size(idx,2),'uint32')]] ;
+            end
+    % Sweep bars to quads
+        % Change bar types to quads
+            barIdx = find(arrayfun(@(t)isa(t,'pkg.mesh.elements.base.Bar'),types)) ;
+            types(barIdx) = pkg.mesh.elements.base.Quadrangle ;
+        % Find elements that are bars
+            barIdx = ismember(indices(:,1),barIdx) ;
+        % Set the new indices
+            if any(barIdx)
+                nBars = sum(barIdx) ;
+                % Extend the indices table if needed
+                    indices = [indices zeros(size(indices,1),5-size(indices,2),'uint32')] ; 
+                % Remove bars from indices
+                    idx = indices(barIdx,:) ; % keep a copy
+                    indices = indices(~barIdx,:) ; % delete the bars
+                % Sweep bars
+                    idx = repmat(idx,[nPts 1]) + uint32( [0 1 1 1 1].*repelem((0:nPts-1)',nBars,1)*this.nNodes ) ;
+                % Convert to quads [typeIdx n1 n2 n2' n1']
+                    idx = [idx(1:(nPts-1)*nBars,1) idx(1:(nPts-1)*nBars,2:3) flip(idx(nBars+1:nPts*nBars,2:3),2)] ;
+                % Push in the indices list
+                    indices = [indices ; [idx zeros(size(idx,1),size(indices,2)-size(idx,2),'uint32')]] ;
+            end
+    % Return
+        elems = pkg.mesh.elements.ElementTable('Types',types,'Indices',indices) ;
+        if nargout==0 ; this.X = x ; this.Elems = elems ; 
+        else ; mesh = pkg.mesh.Mesh('X',x,'Elems',elems) ; 
+        end
+    end
+    
+    
+    function mesh = splitNodes(this,nod)
+    % Split the mesh at given nodes
+    % Create a new node for each attached element
+        if islogical(nod) ; nod = find(nod) ; end
+        nod = unique(nod(:)) ;
+        if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
+        for nn = nod(:)'
+            ind = ismember(mesh.Elems.NodeIdx,nn) ;
+            newNodes = [nn mesh.nNodes + (1:sum(ind(:))-1)] ;
+            mesh.Elems.NodeIdx(ind(:)) = newNodes(:) ;
+            mesh.X.Values(newNodes,:) = repmat(mesh.X.Values(nn,:),[numel(newNodes) 1]) ;
+        end
+    end
+    
+    function mesh = splitEdges(this,edg)
+    % Split the mesh at given edge indices
+        if islogical(edg) ; edg = find(edg) ; end
+        edg = unique(edg(:)) ;
+    % Corresponding end nodes
+        nodeIdx = this.Edges.NodeIdx(edg,:) ;
+        nodeIdx = [nodeIdx(:,1) nodeIdx(sub2ind(size(nodeIdx),(1:size(nodeIdx,1))',sum(nodeIdx>0,2)))] ;
+        nodes = unique(nodeIdx(:)) ;
+    % Connectivities
+        edg2nod = this.edge2node ;
+        elm2edg = this.elem2edge ;
+    % Browse over the nodes...
+        elems = this.Elems ;
+        x = this.X.Values ;
+        for nn = 1:numel(nodes)
+        % Edges linked to the node
+            nodEdg = find(edg2nod(nodes(nn),:)) ;
+        % End edges: do not share elements with the edges to split
+            endEdg = sum(elm2edg(nodEdg,:)*elm2edg(edg,:)',2)==0 ;
+        % Remove end edges
+            normalEdg = nodEdg(~endEdg) ;
+            normalEdg = setdiff(normalEdg,edg) ;
+        % Create a new node for each normal edge
+            newNodes = [nodes(nn) size(x,1)+(1:numel(normalEdg)-1)] ;
+            x(newNodes,:) = repmat(x(nodes(nn),:),[numel(normalEdg) 1]) ;
+        % Assign the new nodes to the normal edge's neightboring elements
+            for ee = 1:numel(normalEdg)
+                elmt = elm2edg(normalEdg(ee),:) ;
+                idx = ismember(elems.NodeIdx,nodes(nn)) & elmt(:) ;
+                elems.NodeIdx(idx) = newNodes(ee) ;
+            end
+        end
+    % Assign the mesh
+        if nargout==0 ; this.X = x ; this.Elems = elems ; 
+        else ; mesh = pkg.mesh.Mesh('X',x,'Elems',elems) ; 
+        end
+    end
+    
+    
 end
 
 
@@ -699,6 +989,7 @@ methods
         mesh.cullInvalid ;
         mesh.cullUnused ;
         mesh.cullDuplicates(tol) ;
+        this.Elems = clean(this.Elems) ;
     end
 
     function mesh = removeNodes(this,remove)
@@ -718,7 +1009,7 @@ methods
     % nod can be logical or indexes
         if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
         if ~islogical(remove) % convert to logical
-            remove = full(sparse(remove(:),ones(numel(remove),1),true,mesh.Elems,1)) ; 
+            remove = full(sparse(remove(:),ones(numel(remove),1),true,mesh.nElems,1)) ; 
         end
         if ~any(remove) ; return ; end
         mesh.Elems.Indices = mesh.Elems.Indices(~remove,:) ;
@@ -792,9 +1083,9 @@ end
 
 %% VIZUALIZATION
 methods
-    function h = plot(this)
+    function h = plot(this,varargin)
     % Simple plot of the mesh
-        h = pkg.mesh.MeshPlot() ;
+        h = pkg.mesh.MeshPlot(varargin{:}) ;
         h.Parent = gca ; 
         h.Mesh = this ;
     end
