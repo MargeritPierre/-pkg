@@ -152,9 +152,10 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         
         function update(this)
         % Object updating function
+            if isempty(this.Mesh) ; return ; end
             % Add dummy nodes for display purposes
                 vertices = [this.Mesh.X.Values ; NaN(1,this.Mesh.nCoord)] ;
-                edgIdx = [this.Mesh.Edges.indicesWithNaNs ones(this.Mesh.nEdges,1)*this.Mesh.nNodes+1] ;
+                edgIdx = [this.Mesh.Edges.indicesWithNaNs ones(this.Mesh.nEdges,1).*this.Mesh.nNodes+1] ;
             % Set vertices to patches
                 %ppp = findobj(this.GraphicGroup,'type','patch') ;
                 %set(ppp,'Vertices',vertices) ;

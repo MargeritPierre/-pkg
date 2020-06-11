@@ -1058,11 +1058,10 @@ methods
         for tt = 1:crossElems.nTypes
             elmtType = crossElems.Types(tt) ;
             elmtIdx = crossElems.TypeIdx==tt ;
-            newElems = elmtType.slice(crossElmtEdg(elmtIdx,1:elmtType.nEdges)) ;
-            sliceElems = [sliceElems newElems] ;
+            newElems = elmtType.s
         end
     % Get the intersection points
-        Xe = this.Edges.subpart(crossEdg).dataAtIndices(x) ;
+        Xe = this.Edges.dataAtIndices(x) ;
         Xc = Xe(:,1,:).*(1-t) + Xe(:,2,:).*t ;
         Xc = permute(Xc,[1 3 2]) ;
     % Slice mesh

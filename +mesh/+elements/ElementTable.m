@@ -412,6 +412,20 @@ methods
 %             otherwise ; ii = 1 ;
 %         end
 %     end
+
+    function table = subpart(this,elmtIdx)
+    % Return a new table containing only a sub-part of the elements
+    % Extract the sub-indices
+        indices = this.Indices(elmtIdx,:) ;
+        typeIdx = this.TypeIdx(elmtIdx) ;
+    % Keep only the unique used types
+        validType = typeIdx>0 ;
+        [~,keepTypes,typeIdx(validType)] = unique(typeIdx(validType)) ;
+        indices(:,1) = typeIdx ;
+    % Assign
+        table = pkg.mesh.elements.ElementTable('Types',this.Types(keepTypes),'Indices',indices) ;
+    end
+        
     
     function table = cat(~,varargin)
     % Concatenate element tables to an unique table

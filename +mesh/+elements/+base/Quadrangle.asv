@@ -64,12 +64,13 @@ classdef Quadrangle < pkg.mesh.elements.AbstractElement
 
 %% GEOMETRY (ELEMENT CUTTING, ETC...)
     methods
-%         function elems = slice(this,crossEdg)
-%         % Slice the element given a signed number of crossed edges
-%         % signed logical:0 if the edge is not crossed, or (+/-1) for the sign of the
-%         % slicing function
-%             elems = pkg.mesh.elements.ElementTable ;
-%         end
+        function elems = slice(this,crossEdg)
+        % Slice the element given a signed number of crossed edges
+        % signed logical:0 if the edge is not crossed, or (+/-1) for the sign of the
+        % slicing function
+            elems = pkg.mesh.elements.ElementTable ;
+            
+        end
     end
 
 end
