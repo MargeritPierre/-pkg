@@ -1,4 +1,4 @@
-classdef Prism < pkg.mesh.elements.AbstractElement
+classdef Prism < pkg.mesh.elements.base.BaseElement
 %PRISM 3D PRISM (2D simplex extruded along e3)
 
 %% (MANDATORY) ELEMENT DEFINITION

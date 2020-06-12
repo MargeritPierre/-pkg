@@ -1,4 +1,4 @@
-classdef Hexahedron < pkg.mesh.elements.AbstractElement
+classdef Hexahedron < pkg.mesh.elements.base.BaseElement
 %HEXAHEDRON 3D cube with 8 nodes
 
 %% (MANDATORY) ELEMENT DEFINITION

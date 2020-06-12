@@ -1,4 +1,4 @@
-classdef Node < pkg.mesh.elements.AbstractElement
+classdef Node < pkg.mesh.elements.base.BaseElement
 %NODE 0D element with one node
 
 %% (MANDATORY) ELEMENT DEFINITION
@@ -49,6 +49,25 @@ classdef Node < pkg.mesh.elements.AbstractElement
 
         function delete(this)
         % Destructor
+        end
+    end
+    
+%% GEOMETRY
+    methods
+        function [elems,idx] = slice(this,nodeBool)
+        % Slice the element given a signed logical value of a levelset on
+        % each node: -1 (inside), 0 (on) or 1 (outside)
+        % input: this: element; nodeBool [nElems this.nNodes]
+        % output:
+        %   - an element table ELEMS containing the sliced elements. 
+        %       /!\ the node indices in the table are complex uint32 ! :
+        %       - real indices denote nodes of the reference element
+        %       - imaginary indices denote edges of the reference element
+        %   - a list IDX of size [ELEMS.nElems 1] where IDX(i) contains the
+        %   index of the input element
+            ON = find(nodeBool(:)==0) ;
+            elems = pkg.mesh.elements.ElementTable('Types',this,'Indices',repmat([1 1],[numel(ON) 1])) ;
+            idx = ON(:) ;
         end
     end
 

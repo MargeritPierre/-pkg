@@ -1,4 +1,4 @@
-classdef Pyramid < pkg.mesh.elements.AbstractElement
+classdef Pyramid < pkg.mesh.elements.base.BaseElement
 %TETRAHEDRON 3D simplex with 4 nodes
 
 %% (MANDATORY) ELEMENT DEFINITION

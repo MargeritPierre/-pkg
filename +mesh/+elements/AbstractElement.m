@@ -182,29 +182,48 @@ methods
     % so that frame(E) = F(E)*X
     end
     
-    function elems = slice(this,crossEdg)
-    % Slice the element given a signed number of crossed edges
-    % signed logical: 0 if the edge is not crossed, or (+/-1) for the sign of the slicing function
-        if size(crossEdg,2)~=this.nEdges
-            error('Incorrect format for the signed cross edges array') ;
-        end
+    function [elems,idx] = slice(this,nodeBool)
+    % Slice the element given a signed logical value of a levelset on
+    % each node: -1 (inside), 0 (on) or 1 (outside)
+    % input: this: element; nodeBool [nElems this.nNodes]
+    % output:
+    %   - an element table ELEMS containing the sliced elements. 
+    %       /!\ the node indices in the table are complex uint32 ! :
+    %       - real indices denote nodes of the reference element
+    %       - imaginary indices denote edges of the reference element
+    %   - a list IDX of size [ELEMS.nElems 1] where IDX(i) contains the
+    %   index of the input element
         elems = pkg.mesh.elements.ElementTable ;
-        switch this.nDims
-            case 1 % slice a bar -> node
-                elems = pkg.mesh.elements.ElementTable(...
-                                'Types',pkg.mesh.elements.base.Node ...
-                                ,'Indices',find(crossEdg(:)).*[0 1] + [1 0] ...
-                                ) ;
-            case 2 % slice a tri/quad -> bar
-                %[elmt,edg,val] = find(crossEdg) ;
-                [~,indEdg] = sort(2*abs(crossEdg)+crossEdg,2,'descend') ;
-                idx = indEdg(:,1:2) ; % this is a partial solution....
-                elems = pkg.mesh.elements.ElementTable(...
-                                'Types',pkg.mesh.elements.base.Bar ...
-                                ,'Indices',[idx(:,1)*0+1 idx] ...
-                                ) ;
-            case 3 % slice a 3D elem -> ?
-        end
+        idx = [] ;
+    end
+        
+    function S = sliceCases(this)
+    % Return all the cases that have to be tested while slicing this
+    % element
+    % S is an array of structures with fields:
+    %   - Test: signed boolean configuration [1 this.nNodes]
+    %           (-1 inside, 0 on, 1 outside, NaN any cases)
+    %   - IN: elements inside (pkg.mesh.elements.ElementTable)
+    %   - ON: elements on the slice (pkg.mesh.elements.ElementTable)
+    %   - OUT: elements outside (pkg.mesh.elements.ElementTable)
+    % /!\ The parent function will already test opposite signs, do not bother with this !
+    % in the ElementTables, indices>this.nNodes denote edges indices
+    % (used when the slice cross an edge)
+        import pkg.mesh.elements.ElementTable
+        import pkg.mesh.elements.base.*
+        S = repmat(struct('Test',[],'IN',[],'ON',[],'OUT',[]),[0 0]) ; % empty structure
+    % By default, this will return all test possibilities...
+        % Create all possible combinations...
+            allTests = repmat({[-1,1]},[this.nNodes 1]) ;
+            [allTests{:}] = ndgrid(allTests{:}) ;
+            allTests = cat(this.nNodes+1,allTests{:}) ;
+            allTests = reshape(allTests,[],this.nNodes) ;
+        % Sort by absolute value
+            [~,ind] = sort(sum(abs(allTests),2)) ;
+            allTests = allTests(ind,:) ;
+        % Inject in the structure
+            allTests = num2cell(allTests,2) ;
+            [S(1:numel(allTests)).Test] = deal(allTests{:}) ;
     end
 end
 
@@ -220,6 +239,8 @@ methods
                 H = plotReferenceElement(this,varargin{:}) ;
             case 'SHAPEFUNCTIONS'
                 H = plotShapeFunctions(this,varargin{:}) ;
+            case 'SLICECASES'
+                H = plotSliceCases(this,varargin{:}) ;
         end
     end
 
@@ -228,37 +249,13 @@ methods
         if nargin<2 ; ax = gca ; end
         h = gobjects(0) ;
         E = this.localCoordinatesIn3D ;
-        % Faces
-%             h(end+1) = patch(ax,'Vertices',E,'Faces',this.Faces.NodeIdx,'Tag','Faces') ;
-%                 h(end).FaceColor = 'w' ;
-%                 h(end).EdgeColor = 'k' ;
-%                 h(end).LineWidth = 0.5 ;
-        h(end+1) = hggroup(ax,'Tag','FaceLabels') ;
-            lbl = arrayfun(@(c)['F' num2str(c)],1:this.nFaces,'UniformOutput',false) ;
-            P = this.Faces.meanDataAtIndices(E) ;
-            txt = text(ax,P(:,1),P(:,2),P(:,3),lbl,'Parent',h(end),'BackgroundColor','w','edgecolor','k') ;
-        % Edges
-        h(end+1) = patch(ax,'Vertices',E,'Faces',this.Edges.NodeIdx,'Tag','Edges') ;
-            h(end).FaceColor = 'none' ;
-            h(end).EdgeColor = 'k' ;
-            h(end).LineWidth = 2 ;
-        h(end+1) = hggroup(ax,'Tag','EdgeLabels') ;
-            lbl = arrayfun(@(c)['E' num2str(c)],1:this.nEdges,'UniformOutput',false) ;
-            P = this.Edges.meanDataAtIndices(E) ;
-            txt = text(ax,P(:,1),P(:,2),P(:,3),lbl,'Parent',h(end),'BackgroundColor','w','edgecolor','k') ;
-        % Nodes
-        h(end+1) = patch(ax,'Vertices',E,'Faces',(1:this.nNodes)','Tag','Nodes') ;
-            h(end).FaceColor = 'none' ;
-            h(end).EdgeColor = 'k' ;
-            h(end).LineStyle = 'none' ;
-            h(end).Marker = '.' ;
-            h(end).MarkerSize = 20 ;
-        h(end+1) = hggroup(ax,'Tag','NodeLabels') ;
-            lbl = arrayfun(@(c)['N' num2str(c)],1:this.nNodes,'UniformOutput',false) ;
-            txt = text(ax,E(:,1),E(:,2),E(:,3),lbl,'Parent',h(end),'BackgroundColor','w','edgecolor','k') ;
-        % Put in the same group
-        H = hggroup(ax) ;
-        set(h,'Parent',H) ;
+        elems = pkg.mesh.elements.ElementTable('Types',this','Indices',[1 1:this.nNodes]) ;
+        mesh = pkg.mesh.Mesh('X',E,'Elems',elems) ;
+        H = plot(mesh) ;
+        H.Faces.FaceColor = 'none' ;
+        H.VisibleNodes = 'all' ;
+        H.HighlightEndNodes = false ;
+        H.ShowLabels = {'Nodes','Edges','Faces'} ;
         if this.nDims>2 ; set(ax,'view',[30 30],'Toolbar',[],'Interactions',[rotateInteraction]) ; end
     end
 
@@ -304,12 +301,14 @@ methods
                             ax(end).OuterPosition = [(nn-1)/this.nNodes 1-oo/nOrd 1/this.nNodes 1/nOrd] ;
                         % Plot the reference element
                             H = this.plot('ReferenceElement',ax(end)) ;
+                            H.ShowLabels = {} ;
                         % Remove the labels
-                            delete(findobj(H,'type','text')) ;
-                        % Set faces transparent
-                            set(findobj(H,'type','patch'),'FaceColor','none')
+                            H.ShowLabels = {} ;
                         % Highlight the current node only
-                            set(findobj(H,'type','patch','-not','marker','none'),'Faces',nn)
+                            H.VisibleNodes = 'all' ;
+                            H.HighlightEndNodes = false ;
+                            H.Nodes.Faces = nn ;
+                            H.Nodes.MarkerSize = 30 ;
                         % Plot the shape function/derivative
                             switch this.nDims
                                 case 1
@@ -340,6 +339,49 @@ methods
             colormap(jet(11)) ;
             end
             set(ttl,'Interpreter','tex','units','normalized','position',[0.5 0.5 0]) ;
+    end
+    
+    function ax = plotSliceCases(this,fig)
+    % Plot the slice cases implemented for the element
+        if nargin<2 ; fig = gcf ; end
+        S = this.sliceCases ;
+        nCases = min(numel(S),30) ;
+        nAx = ceil(sqrt(nCases)) ; nAy = ceil(nCases/nAx) ;
+        ax = gobjects(0) ;
+        E = this.localCoordinatesIn3D ;
+        E = [E ; this.Edges.meanDataAtIndices(E)] ; % add edge centroids
+        %E = E + [1.1 0 0] ; % shift from the main plane
+        clrmp = padarray(linspecer(3),10,'replicate') ; jet(101) ;
+        for cc = 1:nCases
+        % New axes
+            yy = ceil(cc/nAx) ; xx = cc-(yy-1)*nAx ;
+            ax(end+1) = axes(fig,'OuterPosition',[(xx-1)/nAx 1-yy/nAy 1/nAx 1/nAy]) ; 
+        % Reference element
+            H = plot(this,'referenceElement') ;
+            H.ShowLabels = {} ;
+        % Show the levelset values
+            H.VisibleFaces = 'all' ;
+            H.Faces.FaceColor = 'interp' ;
+            H.Faces.FaceVertexCData = S(cc).Test(:) ;
+        % Show inside, onside, outside meshes
+            Hin = plot(pkg.mesh.Mesh('X',E + [1.1 0 0],'Elems',S(cc).IN)) ;
+            Hin.Faces.FaceColor = clrmp(1,:) ;
+            Hin.BoundaryEdges.EdgeColor = clrmp(1,:) ;
+            Hon = plot(pkg.mesh.Mesh('X',E + [1.1 -1.1 0],'Elems',S(cc).ON)) ;
+            Hon.Faces.FaceColor = clrmp(ceil(end/2),:) ;
+            Hon.BoundaryEdges.EdgeColor = clrmp(ceil(end/2),:) ;
+            Hout = plot(pkg.mesh.Mesh('X',E + [0 -1.1 0],'Elems',S(cc).OUT)) ;
+            Hout.Faces.FaceColor = clrmp(end,:) ;
+            Hout.BoundaryEdges.EdgeColor = clrmp(end,:) ;
+            set([Hin.Faces Hon.Faces Hout.Faces],'FaceAlpha',0.5) ;
+        end
+        set(ax,'xtick',[],'ytick',[],'ztick',[]) ;
+        set(ax,'looseinset',[1 1 1 1]*0.05) ;
+        set(ax,'colormap',clrmp) ;
+        set(ax,'clim',[-1 1]) ;
+        axis(ax,'off') ;
+        axis(ax,'equal') ;
+        fig.UserData.hlink = linkprop(ax,'view') ;
     end
 end
 

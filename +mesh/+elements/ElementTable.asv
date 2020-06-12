@@ -130,7 +130,8 @@ methods
             valid = indices(:,1)>0 & indices(:,1)<=numel(this.Types) ;
         % The number of node indices is correct
             nNodes = reshape([this.Types.nNodes],[],1) ;
-            valid(valid) = valid(valid) & sum(indices(valid,2:end)>0,2)==nNodes(indices(valid,1)) ;
+            realNodeIdx = real(indices(valid,2:end)) + imag(indices(valid,2:end)) ; % allw 
+            valid(valid) = valid(valid) & sum(abs(indices(valid,2:end))>0,2)==nNodes(indices(valid,1)) ;
     % Auto assign type indices if needed
         if any(~valid) 
             indices(~valid,1) = this.assignElementTypeIdx(indices(~valid,2:end)) ;
@@ -438,7 +439,7 @@ methods
         typeIdx = this.TypeIdx(elmtIdx) ;
     % Keep only the unique used types
         validType = typeIdx>0 ;
-        [keepTypes,~,typeIdx(validType)] = unique(typeIdx(validType)) ;
+        [~,keepTypes,typeIdx(validType)] = unique(typeIdx(validType)) ;
         indices(:,1) = typeIdx ;
     % Assign
         table = pkg.mesh.elements.ElementTable('Types',this.Types(keepTypes),'Indices',indices) ;

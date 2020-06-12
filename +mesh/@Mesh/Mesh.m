@@ -1028,45 +1028,116 @@ methods
         x = pkg.math.innerprod(mesh.X.Values-P,R,2,1) + P ;
     % Apply
         mesh.replicate(x,true,loop) ;
+    end   
+    
+end
+
+
+%% MESH SLICING, CUTTING, SPLITTING,... BY A LEVEL SET
+methods
+    
+    function sBool = lvlSetSign(this,fcnX,tol,X)
+    % Evaluate a levelset f = fcn(X) on mesh nodes X and return a signed
+    % boolean: -1 (inside), 0 (on), 1 (outside)
+        if nargin<3 ; tol = this.defaultTolerance ; end
+        if nargin<4 ; X = this.X.Values ; end
+        if ~isnumeric(fcnX) ; fcnX = fcnX(X) ; end % fcnX can be a function handle..
+        %sBool = sign(floor(abs(fcnX)/tol).*sign(fcnX)) ; % With a tolerance on the 'ON' case (fcn~0)
+        sBool = sign(fcnX) ; % Without a tolerance
     end
     
-    function mesh = slice(this,fcn)
-    % Slice of the mesh at locations X where the sign of fcn(X) changes
-    % Eval the function on nodes
-        x = this.X.Values ;
-        fcnX = fcn(x) ;
-    % Get which edges are crossing the level-set
-        % apply function values on edge nodes
-        fcnEdg = this.Edges.dataAtIndices(fcnX) ;
-        % get the intersection parameter (linear interpolation !)
-        t = fcnEdg(:,1)./(fcnEdg(:,1)-fcnEdg(:,2)) ;
-        % edg cross if the parameter is strictly between 0 and 1
-        crossEdg = find(t>0 & t<1) ;
-        if ~any(crossEdg) ; mesh = pkg.mesh.Mesh ; return ; end
-        fcnEdg = fcnEdg(crossEdg,:) ;
-        t = t(crossEdg) ;
-    % Get the list of crossed elements
-        elemEdges = this.ElemEdges(crossEdg,:) ;
-        crossElems = any(elemEdges,1) ;
-        [edg,elmt,idx] = find(elemEdges(:,crossElems)) ;
-    % Build the list of element crossed edges (signed logical)
-        crossElems = this.Elems.subpart(crossElems) ;
-        crossElmtEdg = zeros(crossElems.nElems,max([crossElems.Types.nEdges])) ;
-        crossElmtEdg(sub2ind(size(crossElmtEdg),elmt,idx)) = sign(fcnEdg(edg,1)) ;
-    % Create the new list of elements
-        sliceElems = pkg.mesh.elements.ElementTable ;
-        for tt = 1:crossElems.nTypes
-            elmtType = crossElems.Types(tt) ;
-            elmtIdx = crossElems.TypeIdx==tt ;
-            newElems = elmtType.slice(crossElmtEdg(elmtIdx,1:elmtType.nEdges)) ;
-            sliceElems = [sliceElems newElems] ;
-        end
-    % Get the intersection points
-        Xe = this.Edges.subpart(crossEdg).dataAtIndices(x) ;
+    function [fBool,eBool,sBool] = featureLevelSetSign(this,fcnX,features,tol,X)
+    % Same as above but at the level of features: edges/faces/elems
+    % fBool: [nFeat 1] feature level
+    % eBool: [nFeat nNaxNodesByFeature] feature node's level
+    % sBool: [nNodes 1] node level
+        if nargin<3 ; features = this.Elems ; end
+        if nargin<4 ; tol = this.defaultTolerance ; end
+        if nargin<5 ; X = this.X.Values ; end
+        if ~isnumeric(fcnX) ; fcnX = fcnX(X) ; end % fcnX can be a function handle..
+        sBool = lvlSetSign(this,fcnX,tol,X) ;
+    % Spread in features
+        eBool = features.dataAtIndices(sBool) ;
+    % Set
+        fBool = zeros(features.nElems,1) ; % on the level set by default (=0)
+        fBool(all(eBool==-1 | isnan(eBool),2)) = -1 ; % all nodes inside
+        fBool(all(eBool==1 | isnan(eBool),2)) = 1 ; % all nodes outside
+    end
+    
+    function [Xc,t] = edgCrossLvlSet(this,fcnX,edg,tol,X)
+    % Return the parameters t corresponding to the location where the edge
+    % cross a levelset (fcn changes of sign)
+        if nargin<3 ; edg = 1:this.nEdges ; end
+        if nargin<4 ; tol = this.defaultTolerance ; end
+        if nargin<5 ; X = this.X.Values ; end
+        if isempty(edg) || ~any(edg) ; t = [] ; Xc = [] ; return ; end
+        edges = this.Edges.subpart(edg) ;
+        if ~isnumeric(fcnX) ; fcnX = fcnX(X) ; end
+    % Get the intersection parameter <TODO> higher-order interp with tol..
+        fcnEdg = edges.dataAtIndices(fcnX) ;
+        t = fcnEdg(:,1)./(fcnEdg(:,1)-fcnEdg(:,2)) ; % (linear interpolation !)
+    % Get intersection points
+        Xe = edges.dataAtIndices(X) ;
         Xc = Xe(:,1,:).*(1-t) + Xe(:,2,:).*t ;
         Xc = permute(Xc,[1 3 2]) ;
+    end
+    
+    function mesh = slice(this,fcn,tol,X)
+    % Slice of the mesh at locations X where the sign of fcn(X) changes
+        if nargin<3 ; tol = this.defaultTolerance ; end
+        if nargin<4 ; X = this.X.Values ; end
+    % Evaluate the levelset on nodes
+        fcnX = fcn(X) ;
+    % Get which elements need to be sliced
+        [fBool,eBool,sBool] = featureLevelSetSign(this,fcnX,this.Elems,tol,X) ;
+        indElemsToSlice = find(fBool==0) ;
+        eBool = eBool(indElemsToSlice,:) ;
+        elemsToSlice = this.Elems.subpart(indElemsToSlice) ;
+    % Edges: we need to retrieve the connectivity...
+        [edg,elmt,elmtIdx] = find(this.ElemEdges(:,indElemsToSlice)) ;
+        globalEdgIdx = full(sparse(elmt,elmtIdx,edg)) ;
+        elemEdges = pkg.mesh.elements.ElementTable('NodeIdx',globalEdgIdx) ;
+    % Slice elements
+        sliceElems = pkg.mesh.elements.ElementTable ;
+        for tt = 1:elemsToSlice.nTypes
+            % Retrieve concerned elements
+                elmtType = elemsToSlice.Types(tt) ;
+                elmtIdx = elemsToSlice.TypeIdx==tt ;
+            % Slice the corresponding elements
+                [newElems,elmtIdx] = elmtType.slice(eBool(elmtIdx,1:elmtType.nNodes)) ;
+            % From local node indices to global node indices... (tidy part..)
+            if ~isempty(elmtIdx)
+                % Separate node & edge indices
+                    edgIdx = newElems.NodeIdx.*uint32(newElems.NodeIdx>elmtType.nNodes) ;
+                    nodIdx = newElems.NodeIdx-edgIdx ;
+                % Go global
+                    nodIdx = elemsToSlice.globalize(nodIdx,elmtIdx) ;
+                    edgIdx = elemEdges.globalize(max(edgIdx-elmtType.nNodes,0),elmtIdx) ;
+                    edgIdx(edgIdx>0) = edgIdx(edgIdx>0) + this.nNodes ;
+                % Assign new elements
+                    newElems.NodeIdx = nodIdx + edgIdx ;
+                % Add to the list
+                    sliceElems = [sliceElems newElems] ;
+            end
+        end
+    % Clean the element list (may be duplicated elements)
+        sliceElems = clean(sliceElems) ;
+    % Unique (and shorter..) list of nodes/edges indices
+        [elmtIdx,nodePos,idx] = find(sliceElems.NodeIdx) ;
+        isNod = idx<=this.nNodes ; isEdg = ~isNod ; % imaginary indices denote edge indices
+        [uNod,na,nc] = unique(idx(isNod)) ;
+        [uEdg,ea,ec] = unique(idx(isEdg)-this.nNodes) ;
+    % Keep nodes
+        Xn = X(uNod,:) ;
+        idx(isNod) = nc ;
+    % Create new nodes at edge intersections
+        Xc = edgCrossLvlSet(this,fcn,uEdg,tol,X) ;
+        idx(isEdg) = ec + numel(uNod) ;
+    % Finally..
+        sliceElems.NodeIdx = full(sparse(elmtIdx,nodePos,double(idx))) ;
+        Xs = [Xn ; Xc] ;
     % Slice mesh
-        mesh = pkg.mesh.Mesh('Elems',(1:size(Xc,1))','X',Xc) ;
+        mesh = pkg.mesh.Mesh('X',Xs,'Elems',sliceElems) ;
     end
     
     function mesh = cut(this,fcn)
@@ -1076,8 +1147,6 @@ methods
     function mesh = split(this,fcn)
     % Split the mesh at locations where the sign of fcn(X) changes
     end
-    
-    
 end
 
 

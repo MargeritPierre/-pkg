@@ -87,6 +87,12 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         function parent = get.Parent(this)
             parent = get(this.GraphicGroup,'Parent') ;
         end
+        function set.Tag(this,tag)
+            set(this.GraphicGroup,'Tag',tag) ;
+        end
+        function tag = get.Tag(this)
+            tag = get(this.GraphicGroup,'Tag') ;
+        end
     end
     
     
@@ -168,7 +174,7 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
                     otherwise
                         visibleFaces = false(this.Mesh.nFaces,1) ;
                 end
-                this.setPatch(this.Faces,vertices,this.Mesh.Faces.NodeIdx(visibleFaces,:)) ;
+                this.setPatch(this.Faces,vertices,this.Mesh.Faces.subpart(visibleFaces).indicesWithNaNs) ;
             % Edges
                 switch this.VisibleEdges
                     case 'all'

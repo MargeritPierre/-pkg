@@ -1,4 +1,4 @@
-classdef Triangle < pkg.mesh.elements.AbstractElement
+classdef Triangle < pkg.mesh.elements.base.BaseElement
 %TRIANGLE 2D simplex element with 3 nodes 
 
 %% (MANDATORY) ELEMENT DEFINITION
