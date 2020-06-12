@@ -71,7 +71,7 @@ methods
     % By default, this will return all test possibilities... 
     % (more than 6000 tests for an hexahedron...)
         % Create all possible combinations...
-            allTests = repmat({[-1,1]},[this.nNodes 1]) ;
+            allTests = repmat({[-1,0,1]},[this.nNodes 1]) ;
             [allTests{:}] = ndgrid(allTests{:}) ;
             allTests = cat(this.nNodes+1,allTests{:}) ;
             allTests = reshape(allTests,[],this.nNodes) ;
@@ -117,13 +117,14 @@ methods
                     allElems = [1 3 ; 3 2]' ;
                     allNodes = [1 2 3] ;
                 case 2
-                    allElems = idxAll(delaunay(Ne(idxAll,:))) ;
+                    allElems = delaunay(Ne(idxAll,:)) ;
                     allEdges = reshape(allElems(:,[1 2 2 3 3 1])',2,[])' ;
                 case 3
-                    allElems = idxAll(delaunay(Ne(idxAll,:))) ;
+                    allElems = delaunay(Ne(idxAll,:)) ;
                     allFaces = reshape(allElems(:,[1 3 2 1 2 4 2 3 4 3 1 4])',3,[])' ;
             end
         % Get elems belonging to the different parts
+            elON = allElems(all(ismember(allElems,idxON),2),:) ;
             elIN = allElems(all(ismember(allElems,idxIN),2),:) ;
             elOUT = allElems(all(ismember(allElems,idxOUT),2),:) ;
         % Fill
@@ -133,12 +134,9 @@ methods
                     S(tt).IN = ElementTable('Types',bar,'Indices',[1 elIN]) ;
                     S(tt).OUT = ElementTable('Types',bar,'Indices',[1 elOUT]) ;
                 case 2 
-                    S(tt).ON = ElementTable('Types',bar ...
-                                    ,'Indices',padarray( allEdges( all(ismember(allEdges,idxIN),2) ,:) ,[0 1],1,'pre') ) ;
-                    S(tt).IN = ElementTable('Types',tri ...
-                                    ,'Indices',padarray(elIN ,[0 1],1,'pre') ) ;
-                    S(tt).OUT = ElementTable('Types',tri ...
-                                    ,'Indices',padarray(elOUT ,[0 1],1,'pre') ) ;
+                    S(tt).ON = ElementTable('Types',node,'Indices',[1 allNodes(idxON)]) ;
+                    S(tt).IN = ElementTable('Types',bar,'Indices',[1 elIN]) ;
+                    S(tt).OUT = ElementTable('Types',bar,'Indices',[1 elOUT]) ;
                 case 3
             end
         end

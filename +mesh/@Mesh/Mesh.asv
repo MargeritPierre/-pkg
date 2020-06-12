@@ -1140,7 +1140,7 @@ methods
         mesh = pkg.mesh.Mesh('X',Xs,'Elems',sliceElems) ;
     end
     
-    function cut(this,fcn,tol,X)% [meshON,meshIN,meshOUT] = 
+    function [meshON,meshIN,meshOUT] = cut(this,fcn,tol,X)
     % Return a cut of the mesh so that for any X in mesh, fcn(X)<=0
         if nargin<3 ; tol = this.defaultTolerance ; end
         if nargin<4 ; X = this.X.Values ; end
@@ -1162,7 +1162,7 @@ methods
                 elmtType = elemsOnLvlSt.Types(tt) ;
                 elmtIdx = elemsOnLvlSt.TypeIdx==tt ;
             % Cut the corresponding elements
-                output = elmtType.cut(eBool(elmtIdx,1:elmtType.nNodes)) ; % see pkg.mesh.elements.base.BaseElement.cut
+                cut = elmtType.cut(eBool(elmtIdx,1:elmtType.nNodes)) ; % see pkg.mesh.elements.AbstractElement.cut
             % From local node indices to global node indices... (tidy part..)
 %             if ~isempty(elmtIdx)
 %                 % Separate node & edge indices
@@ -1178,24 +1178,24 @@ methods
 %                     slicedElems = [slicedElems newElems] ;
 %             end
         end
-%     % Clean the element list (may be duplicated elements)
-%         slicedElems = clean(slicedElems) ;
-%     % Unique (and shorter..) list of nodes/edges indices
-%         [elmtIdx,nodePos,idx] = find(slicedElems.NodeIdx) ;
-%         isNod = idx<=this.nNodes ; isEdg = ~isNod ; % imaginary indices denote edge indices
-%         [uNod,na,nc] = unique(idx(isNod)) ;
-%         [uEdg,ea,ec] = unique(idx(isEdg)-this.nNodes) ;
-%     % Keep nodes
-%         Xn = X(uNod,:) ;
-%         idx(isNod) = nc ;
-%     % Create new nodes at edge intersections
-%         Xc = edgCrossLvlSet(this,fcn,uEdg,tol,X) ;
-%         idx(isEdg) = ec + numel(uNod) ;
-%     % Finally..
-%         slicedElems.NodeIdx = full(sparse(elmtIdx,nodePos,double(idx))) ;
-%         Xs = [Xn ; Xc] ;
-%     % Slice mesh
-%         mesh = pkg.mesh.Mesh('X',Xs,'Elems',slicedElems) ;
+    % Clean the element list (may be duplicated elements)
+        slicedElems = clean(slicedElems) ;
+    % Unique (and shorter..) list of nodes/edges indices
+        [elmtIdx,nodePos,idx] = find(slicedElems.NodeIdx) ;
+        isNod = idx<=this.nNodes ; isEdg = ~isNod ; % imaginary indices denote edge indices
+        [uNod,na,nc] = unique(idx(isNod)) ;
+        [uEdg,ea,ec] = unique(idx(isEdg)-this.nNodes) ;
+    % Keep nodes
+        Xn = X(uNod,:) ;
+        idx(isNod) = nc ;
+    % Create new nodes at edge intersections
+        Xc = edgCrossLvlSet(this,fcn,uEdg,tol,X) ;
+        idx(isEdg) = ec + numel(uNod) ;
+    % Finally..
+        slicedElems.NodeIdx = full(sparse(elmtIdx,nodePos,double(idx))) ;
+        Xs = [Xn ; Xc] ;
+    % Slice mesh
+        mesh = pkg.mesh.Mesh('X',Xs,'Elems',slicedElems) ;
     end
     
     function mesh = split(this,fcn)

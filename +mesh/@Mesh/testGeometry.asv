@@ -35,14 +35,15 @@
     
 %% Mesh Slicing
     %lvlst = @(x)x(:,3) ; % horizontal plane at z=0
-    lvlst = @(x)x(:,3)-82/100 ; % horizontal plane at z=0.5
+    lvlst = @(x)x(:,3)-87/100 ; % horizontal plane at z=0.5
     %lvlst = @(x)sum((x-[0 -10/10 1]).^2,2)-(9/10)^2 ; % sphere
     pl.Faces.FaceColor = 'flat' ; 
     pl.Faces.FaceVertexCData = mesh.featureLevelSetSign(lvlst,mesh.Faces) ;
     caxis([-1 1]) ;
     tag = 'SliceMesh' ; delete(findobj(gca,'tag',tag)) ;
     tic
-    slice = mesh.slice(lvlst) ;
+    %slice = 
+    mesh.cut(lvlst) ;
     toc
     ppp = plot(slice,'Tag',tag,'HighlightEndNodes',true) ;
     
