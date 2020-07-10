@@ -316,14 +316,13 @@ methods
         if isempty(features) ; M = sparse(pp,pp*0+1,true,nPts,1) ; return ; end
     % If no points are inside the mesh Bounding box, return an empty matrix
         if isempty(pp) ; M = sparse(nPts,features.nElems) ; return ; end
-    % Find the closest nodes 
-        [nn,dist] = this.closestNode(P(pp,:),X) ;
-        e2n = sparse(features) ;
-        [ppp,ee] = find(e2n(nn,:)) ;
-        pp = pp(ppp) ;
     % Points in element bounding box ?
-        [pp,ee] = inElmtBBox(this,P,features,X,tol,pp,ee) ;
+        [pp,ee] = inElmtBBox(this,P,features,X,tol) ;
         if bboxOnly ; M = logical(sparse(pp,ee,1,nPts,features.nElems)) ; return ; end
+    % Localize each point in each feature
+        [uE,~,dist] = localize(this,P,features,false,X,tol,pp,ee) ;
+        inside = ~any(isnan(uE),2) & dist<=tol  ;
+        pp = pp(inside) ; ee = ee(inside) ;
     % Build the matrix
         M = logical(sparse(pp,ee,1,nPts,features.nElems)) ;
     end
@@ -339,26 +338,26 @@ methods
         if nargin<4 ; X = this.Nodes ; end
         if nargin<5 ; tol = this.defaultTolerance(X) ; end
         nPts = size(P,1) ;
-    % Put the coordinates to the third dimension
-        P = reshape(P,nPts,1,[]) ; % [nPts 1 nCoord]
-        if nargin>5 ; P = P(ip,:,:) ; end % [nTest 1 nCoord]
     % Element node coordinates
         Xe = features.dataAtIndices(X) ; % [nElems nMaxNodesByElem nCoord]
         if nargin>5 % test specific points vs specific elements
+        % Put the coordinates to the third dimension
+            P = reshape(P,nPts,1,[]) ; % [nPts 1 nCoord]
+            if nargin>5 ; P = P(ip,:,:) ; end % [nTest 1 nCoord]
+        % Compute bounding boxes
             Xe = Xe(ie,:,:) ; % [nTest nMaxNodesByElem nCoord] 
             elmtBBox = [min(Xe,[],2) max(Xe,[],2)] ; % [nTest 2 nCoord]
+        % Test if point inside
             in = all(P>=elmtBBox(:,1,:)-tol & P<=elmtBBox(:,2,:)+tol,3) ; % [nTest 1]
             ii = find(in) ;
             pp = ip(ii) ; ee = ie(ii) ;
-        else % test all points vs all elements
+        else % test all points vs all elements...
             elmtBBox = [min(Xe,[],2) max(Xe,[],2)] ; % [nElems 2 nCoord]
-            elmtBBox = permute(elmtBBox,[2 1 3]) ; % [2 nElems nCoord]
-            in = all(P>=elmtBBox(1,:,:)-tol & P<=elmtBBox(2,:,:)+tol,3) ; % [nPts nElems]
-            [pp,ee] = find(in) ;
+            [pp,ee] = pkg.data.inDomain(P,elmtBBox) ; 
         end
     end
     
-    function [uE,uie,udist] = localize(this,P,features,extrap,X,tol,ip,ie)
+    function [E,ie,dist] = localize(this,P,features,extrap,X,tol,ip,ie)
     % Localize points P on the mesh. 
     % Returns the local coordinates corresponding to the feature's closest point
     % Find E = argmin(norm(features.evalAt(E)*X-P))
@@ -414,6 +413,7 @@ methods
             % Find the corresponding element indices
                 elmtIdx = find(features.TypeIdx==typeIdx) ; % The indices in the feature list
                 [isType,ii] = ismember(ie,elmtIdx) ; % Keep only elements of interest
+                isType = find(isType) ;
                 elmtIdx = elmtIdx(ii(isType)) ; % The element indices we will have to deal with
                 nE = length(elmtIdx) ;
             % Retrieve the element node coordinates
@@ -462,7 +462,7 @@ methods
             % coordinate INSIDE the element
                 if ~extrap
                     outside = ~elmtType.isInside(E(isType,:)) ;
-                    E(isType & outside,:) = NaN ;
+                    E(isType(outside),:) = NaN ;
                     dist(isType & outside) = NaN ;
                 end
         end
@@ -470,13 +470,16 @@ methods
         switch mode
             case 'allInAll' % each point is localized in each element
                 E = reshape(E,nPts,nElems,[]) ; 
-            otherwise
+                ie = reshape(ie,nPts,nElems,[]) ; 
+                dist = reshape(dist,nPts,nElems,[]) ; 
+            case 'custom' % let it as it has been asked, do nothing
+            otherwise % keep only the closest element
                 [~,ind] = sort(dist,'ascend') ;
                 [ip,ia] = unique(ip(ind),'first') ;
                 ind = ind(ia) ;
-                uE = NaN(nPts,size(E,2)) ; uE(ip,:) = E(ind,:) ;
-                uie = ones(nPts,1) ; uie(ip) = ie(ind) ;
-                udist = NaN(nPts,1) ; udist(ip) = dist(ind) ;
+                uE = NaN(nLocal,size(E,2)) ; uE(ip,:) = E(ind,:) ; E = uE ;
+                uie = ones(nLocal,1) ; uie(ip) = ie(ind) ; ie = uie ;
+                udist = NaN(nLocal,1) ; udist(ip) = dist(ind) ; dist = udist ;
         end
         if strcmp(mode,'allInAll') ; E = reshape(E,nPts,nElems,[]) ; end
         if debug ; delete(pl0) ; delete(pl) ; end
