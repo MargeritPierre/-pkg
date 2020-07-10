@@ -39,6 +39,11 @@ function V = vectprod(A,B,dim)
     % Compute the product
     V = A([2 3 1],:).*B([3 1 2],:) - A([3 1 2],:).*B([2 3 1],:) ;
     
+    % Reshape
+    szV = max(padarray(szA,[0 ndMax-ndA],1,'post'),padarray(szB,[0 ndMax-ndB],1,'post')) ;
+    szV = szV(permDims) ;
+    V = reshape(V,[3 szV(2:end)]) ;
+    
     % Re-permute the output
     [~,permDims] = sort(permDims) ;
     V = permute(V,permDims) ;

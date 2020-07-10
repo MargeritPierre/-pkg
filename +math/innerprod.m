@@ -20,7 +20,7 @@ function C = innerprod(A,B,varargin)
     switch numel(varargin)
         case 0
             dimsA = ndA ;
-            dimsB = ndB ;
+            dimsB = 1 ;
         case 1
             order = varargin{1} ;
             dimsA = ndA:-1:ndA-order+1 ;

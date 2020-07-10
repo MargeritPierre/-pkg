@@ -1,13 +1,23 @@
 function R = rotmat(ANGLE,AXIS)
 %ROTATIONMATRIX return the rotation matrix corresponding to the rotation of
 %an ANGLE (in radians) about an AXIS
-% AXIS: [nRot nCoord==3] ;
 % ANGLE = [nRot 1] ;
+% AXIS: [nRot nCoord==3] ;
+% ANGLE can also be the rotaton vector [nRot nCoord==3]
 % see https://fr.wikipedia.org/wiki/Matrice_de_rotation
-if nargin<2 ; AXIS = [0 0 1] ; end
+if nargin<2 
+    if size(ANGLE,2)>1 % rotation vector
+        A = sqrt(sum(ANGLE.^2,2)) ;
+        AXIS = ANGLE./A ;
+        AXIS(A<eps,:) = [0 0 1] ; % If the vector is zero, return identity matrix
+        ANGLE = asin(A) ;
+    else
+        AXIS = [0 0 1] ;
+    end
+end
 
-AXIS = AXIS(:,:) ;
 ANGLE = ANGLE(:) ;
+AXIS = AXIS(:,:) ;
 
 [nRot,nCoord] = size(AXIS(:,:)) ;
 
