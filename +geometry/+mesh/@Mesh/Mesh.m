@@ -421,7 +421,7 @@ methods
                 xe = permute(xe,[3 1 2]) ; % [nCoord nE nElmtNodes]
             % Intialize the algorithm
                 e0 = mean(elmtType.NodeLocalCoordinates,1) ;
-                if norm(reshape(elmtType.evalHessianAt(e0),[],1))<tol || 1 ; methodOrder = 1 ;
+                if norm(reshape(elmtType.evalHessianAt(e0),[],1))<tol ; methodOrder = 1 ;
                 else ; methodOrder = 2 ; end
                 e = repmat(e0,[nE 1]) ; % [nE nElmtNodes]
             % Loop until norm(x-P)<tol
@@ -444,16 +444,18 @@ methods
                     notConverged = find(sum(res.^2,1)>tol^2) ;
                     if isempty(notConverged) ; break ; end
                 % Update points where it needs to be
-                    for iii = notConverged
-                        if methodOrder==1
-                            de =  - dx_de(:,:,iii)\res(:,iii) ;
-                        else
-                            J = dx_de(:,:,iii) ;
-                            H = J'*J + squeeze(sum(res(:,iii).*d2x_de2(:,:,:,iii),1)) ;
-                            de =  - H\(J'*res(:,iii)) ;
-                        end
-                        e(iii,:) = e(iii,:) + de.' ;
+                    J = dx_de(:,:,notConverged) ; % [nCoord nElmtDims nE]
+                    r = res(:,notConverged) ; % [nCoord nE]
+                    if methodOrder==1
+                        de = pkg.math.mldivide(J,r) ;
+                    else
+                        J2 = pkg.math.mtimes(permute(J,[2 1 3]),J) ;
+                        Jr = pkg.math.mtimes(permute(J,[2 1 3]),permute(r,[1 3 2])) ;
+                        H = sum(permute(res,[1 3 4 2]).*d2x_de2(:,:,:,notConverged),1) ; % [1 nElmtDims nElmtDims nE] ;
+                        H = J2 + permute(H,[2 3 4 1]) ; % [nElmtDims nElmtDims nE] ;
+                        de = pkg.math.mldivide(H,Jr) ;
                     end
+                    e(notConverged,:) = e(notConverged,:) - de(:,:).' ;
                 end
             % Assign
                 E(isType,:) = e ;
@@ -463,7 +465,7 @@ methods
                 if ~extrap
                     outside = ~elmtType.isInside(E(isType,:)) ;
                     E(isType(outside),:) = NaN ;
-                    dist(isType & outside) = NaN ;
+                    dist(isType(outside)) = NaN ;
                 end
         end
     % Keep only one localization point
@@ -477,24 +479,29 @@ methods
                 [~,ind] = sort(dist,'ascend') ;
                 [ip,ia] = unique(ip(ind),'first') ;
                 ind = ind(ia) ;
-                uE = NaN(nLocal,size(E,2)) ; uE(ip,:) = E(ind,:) ; E = uE ;
-                uie = ones(nLocal,1) ; uie(ip) = ie(ind) ; ie = uie ;
-                udist = NaN(nLocal,1) ; udist(ip) = dist(ind) ; dist = udist ;
+                uE = NaN(nPts,size(E,2)) ; uE(ip,:) = E(ind,:) ; E = uE ;
+                uie = ones(nPts,1) ; uie(ip) = ie(ind) ; ie = uie ;
+                udist = NaN(nPts,1) ; udist(ip) = dist(ind) ; dist = udist ;
         end
         if strcmp(mode,'allInAll') ; E = reshape(E,nPts,nElems,[]) ; end
         if debug ; delete(pl0) ; delete(pl) ; end
     end
     
-    function M = interpMat(this,P,features,extrap,X,tol)
-    % Return a sparse interpolation matrix so that f(P) = M(P)*f_n
+    function M = interpMat(this,P,ie,features,extrap,X,tol)
+    % Return a sparse interpolation matrix so that f(P) = M*f_n
     % with f_n the value of any function at nodes
-        if nargin<3 ; features = this.Elems ; end
-        if nargin<4 ; extrap = false ; end
-        if nargin<5 ; X = this.Nodes ; end
-        if nargin<6 ; tol = this.defaultTolerance(X) ; end
+    % if ie is NOT given (or empty), P is localized in the mesh first
+    % if ie IS given, P is condidered to be local coordinates
+        if nargin<2 ; P = this.centroid ; end
+        if nargin<3 ; ie = [] ; end
+        if nargin<4 ; features = this.Elems ; end
+        if nargin<5 ; extrap = false ; end
+        if nargin<6 ; X = this.Nodes ; end
+        if nargin<7 ; tol = this.defaultTolerance(X) ; end
         M = sparse(size(P,1),this.nNodes) ;
-    % Localize the given points in the mesh
-        [E,ie] = this.localize(P,features,extrap,X,tol) ;
+    % Localize the given points in the mesh if needed
+        if isempty(ie)  ; [E,ie] = this.localize(P,features,extrap,X,tol) ;
+        else ; E = P ; end
         features = features.subpart(ie) ; 
     % Evaluate the element shape functions at the given coordinates
         for typeIdx = 1:features.nTypes
@@ -503,6 +510,83 @@ methods
             N = elmtType.evalAt(E(elmtIdx,1:elmtType.nDims)) ;
             M = M + sparse(repmat(elmtIdx(:),[1 elmtType.nNodes]),double(features.NodeIdx(elmtIdx,1:elmtType.nNodes)),N,size(P,1),this.nNodes) ;
         end
+    end
+    
+    function M = gradMat(this,P,ie,features,extrap,X,tol)
+    % Return sparse matrices M so that df(P)/dx_i = M{i}(P)*f_n
+    % with f_n the value of any function at nodes
+    % if ie is NOT given (or empty), P is localized in the mesh first
+    % if ie IS given, P is condidered to be local coordinates (E)
+        if nargin<3 ; ie = [] ; end
+        if nargin<4 ; features = this.Elems ; end
+        if nargin<5 ; extrap = false ; end
+        if nargin<6 ; X = this.Nodes ; end
+        if nargin<7 ; tol = this.defaultTolerance(X) ; end
+    % Localize the given points in the mesh
+        if nargin<2 % element centroids
+            E = features.getListOf('centroid') ;
+        else % given points
+            if isempty(ie)  ; [E,ie] = this.localize(P,features,extrap,X,tol) ;
+            else ; E = P ; end
+            features = features.subpart(ie) ; 
+        end
+    % Evaluate the element shape function gradient at the given coordinates
+        M = repmat({sparse(size(E,1),this.nNodes)},[this.nCoord 1]) ;
+        xe = features.dataAtIndices(X) ; % [nE nMaxNodesByElmt nCoord] 
+        for typeIdx = 1:features.nTypes
+            elmtType = features.Types(typeIdx) ;
+            elmtIdx = find(features.TypeIdx==typeIdx) ;
+            dN_de = elmtType.evalJacobianAt(E(elmtIdx,1:elmtType.nDims)) ; % [nE nElmtNodes nElmtDims]
+            dx_de = permute(sum(xe(elmtIdx,1:elmtType.nNodes,:).*permute(dN_de,[1 2 4 3]),2),[1 3 4 2]) ; % [nE nCoord nElmtDims] 
+            de_dx = pkg.math.pinv(permute(dx_de,[2 3 1])) ; % [nElmtDims nCoord nE]
+            dN_dx = permute(pkg.math.mtimes(permute(dN_de,[2 3 1]),de_dx),[3 1 2]) ; % [nE nElmtNodes nCoord]
+            iii = repmat(elmtIdx(:),[1 elmtType.nNodes]) ;
+            jjj = double(features.NodeIdx(elmtIdx,1:elmtType.nNodes)) ;
+            for cc = 1:this.nCoord
+                M{cc} = M{cc} + sparse(iii,jjj,dN_dx(:,:,cc),size(E,1),this.nNodes) ;
+            end
+        end
+    end
+    
+    function J = detJacobian(this,P,ie,features,extrap,X,tol)
+    % Return a sparse matrix M so that int(f) = M*f_n
+    % with f_n the value of any function at nodes
+    % if ie is NOT given (or empty), P is localized in the mesh first
+    % if ie IS given, P is condidered to be local coordinates (E)
+        if nargin<3 ; ie = [] ; end
+        if nargin<4 ; features = this.Elems ; end
+        if nargin<5 ; extrap = false ; end
+        if nargin<6 ; X = this.Nodes ; end
+        if nargin<7 ; tol = this.defaultTolerance(X) ; end
+    % Localize the given points in the mesh
+        if nargin<2 % element centroids
+            [E,ie] = features.getListOf('GaussIntegrationPoints') ;
+        else % given points
+            if isempty(ie)  ; [E,ie] = this.localize(P,features,extrap,X,tol) ;
+            else ; E = P ; end
+        end
+        features = features.subpart(ie) ; 
+    % Compute the jacobian and its determinant
+        Xe = features.dataAtIndices(X) ;
+        J = zeros(features.nElems,1) ;
+        for tt = 1:features.nTypes
+            elmtIdx = features.TypeIdx==tt ;
+            elmtType = features.Types(tt) ;
+            dN_de = elmtType.evalJacobianAt(E(elmtIdx,:)) ; % [nE nNodesInElmt nElmtDims]
+            dX_de = sum(Xe(elmtIdx,1:elmtType.nNodes,:).*permute(dN_de,[1 2 4 3]),2) ; % [nE 1 nCoord nElmtDims]
+            dX_de2 = sum(dX_de.*permute(dX_de,[1 4 3 2]),3) ; % squared jacobian  [nE nElmtDims 1 nElmtDims] (for nCoord~=nElmtDims)
+            J(elmtIdx) = sqrt(pkg.math.det(permute(dX_de2,[2 4 1 3]))) ; % [nE 1] ;
+        end
+    end
+    
+    function [P,ie,E] = gaussIntegrationPoints(this,features,X)
+    % Return all gauss points of the features
+    % P: [nF nCoord], ie: [nF 1], E: [nF maxFeatureDim]
+        if nargin<2 ; features = this.Elems ; end
+        if nargin<3 ; X = this.Nodes ; end
+        [E,ie] = features.getListOf('GaussIntegrationPoints') ;
+        M = interpMat(this,E,ie,features) ;
+        P = M*X ;
     end
     
 end

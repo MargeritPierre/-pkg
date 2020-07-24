@@ -45,7 +45,7 @@ classdef Tetrahedron < pkg.geometry.mesh.elements.base.BaseElement
     
 % INTEGRATION QUADRATURE
     properties
-        GaussIntegrationPoints = [1/3 1/3 1/3] % [nGaussIntPts nDims]
+        GaussIntegrationPoints = [1/4 1/4 1/4] % [nGaussIntPts nDims]
         GaussIntegrationWeights = 1/6 % [nGaussIntPts 1]
     end
     

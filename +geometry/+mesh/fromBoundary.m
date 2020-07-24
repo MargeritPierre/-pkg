@@ -19,7 +19,7 @@ function mesh = fromBoundary(Bp)
     nCoord = size(Bp,2) ;
     bbox = range(Bp,1) ; 
     area = prod(bbox) ;
-    N = round(area*dens) ;
+    N = round(area*(dens^nCoord)) ;
     if 0 % random point distribution
         P = rand(N,nCoord) ;
     elseif 1 % regular grid

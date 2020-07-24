@@ -1,6 +1,6 @@
 clc,clf,clearvars ;
 
-N = 200 ;
+N = 3 ;
 x = linspace(0,1,N+1)' ;
 mesh = pkg.geometry.mesh.Mesh(x) ;
 mesh.extrude([0 1],N) ;
@@ -21,7 +21,7 @@ axis equal
 
 bbox = mesh.boundingBox ;
 bbox = bbox + 0.05*[-1 ; 1].*range(bbox,1) ;
-P = rand(100000,mesh.nCoord).*range(bbox,1) + min(bbox,[],1) ;
+P = rand(1000000,mesh.nCoord).*range(bbox,1) + min(bbox,[],1) ;
 tol = 1e-9 ;
 
 clc,clf ;
@@ -44,11 +44,14 @@ pl.Faces.FaceAlpha = 0.5 ;
 axis equal
 
 pOut = setdiff(1:size(P,1),ip) ;
-%scatter(P(pOut,1),P(pOut,2),20,'k','filled')
+scatter(P(pOut,1),P(pOut,2),20,'k','filled')
 scatter(P(ip,1),P(ip,2),20,colors(ie,:),'filled')
 
-
-
+%%
+clc
+tic
+M = mesh.interpMat(P) ;
+toc
 
 
 %%

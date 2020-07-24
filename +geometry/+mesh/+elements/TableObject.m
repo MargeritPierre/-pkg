@@ -62,24 +62,35 @@ methods
     % Erase mesh feature lists | 
     % will be computed the first time its needed
     % (see get.Faces/Edges below)
-        this.Faces = pkg.geometry.mesh.elements.ElementTable ; this.ElemFaces = [] ;
-        this.Edges = pkg.geometry.mesh.elements.ElementTable ; this.ElemEdges = [] ;
+        this.Faces = pkg.geometry.mesh.elements.ElementTable ; 
+        this.ElemFaces = [] ;
+        this.Edges = pkg.geometry.mesh.elements.ElementTable ; 
+        this.ElemEdges = [] ;
     % Set
         this.Elems = elems ;
     end
     
     % Compute the faces & edges only when needed
     function edges = get.Edges(this)
-        if ~isempty(this.Elems) && isempty(this.Edges)
-            [this.Edges,this.ElemEdges] = this.Elems.getTableOfUnique('Edges') ; 
-        end
+        computeFeatures(this,'Edges',this.Edges) ;
         edges = this.Edges ;
     end
+    function elmedg = get.ElemEdges(this)
+        computeFeatures(this,'Edges',this.Edges) ;
+        elmedg = this.ElemEdges ;
+    end
     function faces = get.Faces(this)
-        if ~isempty(this.Elems) && isempty(this.Faces) 
-            [this.Faces,this.ElemFaces] = this.Elems.getTableOfUnique('Faces') ; 
-        end
+        computeFeatures(this,'Faces',this.Faces) ;
         faces = this.Faces ;
+    end
+    function elmfac = get.ElemFaces(this)
+        computeFeatures(this,'Faces',this.Faces) ;
+        elmfac = this.Faces ;
+    end
+    function computeFeatures(this,feat,data)
+        if ~isempty(this.Elems) && isempty(data) 
+            [this.(feat),this.(['Elem' feat])] = this.Elems.getTableOfUnique(feat) ; 
+        end
     end
 end
 

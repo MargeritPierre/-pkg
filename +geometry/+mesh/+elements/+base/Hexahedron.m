@@ -35,7 +35,7 @@ classdef Hexahedron < pkg.geometry.mesh.elements.base.BaseElement
             else % Valid derivatives
                 if isequal(ORD,[1 0 0])
                     DER = [ -(1-E(:,2)).*(1-E(:,3)) , (1-E(:,2)).*(1-E(:,3)) , E(:,2).*(1-E(:,3)) , -E(:,2).*(1-E(:,3)) ...
-                            -(1-E(:,2)).*E(:,3) , (1-E(:,2)).*E(:,3) , E(:,2).*E(:,3) , E(:,2).*E(:,3) ] ;
+                            -(1-E(:,2)).*E(:,3) , (1-E(:,2)).*E(:,3) , E(:,2).*E(:,3) , -E(:,2).*E(:,3) ] ;
                 elseif isequal(ORD,[0 1 0])
                     DER = [ -(1-E(:,1)).*(1-E(:,3)) , -E(:,1).*(1-E(:,3)) , E(:,1).*(1-E(:,3)) , (1-E(:,1)).*(1-E(:,3)) ...
                             -(1-E(:,1)).*E(:,3) , -E(:,1).*E(:,3) , E(:,1).*E(:,3) , (1-E(:,1)).*E(:,3) ] ;
@@ -60,8 +60,9 @@ classdef Hexahedron < pkg.geometry.mesh.elements.base.BaseElement
     
 % INTEGRATION QUADRATURE
     properties
-        GaussIntegrationPoints = [1/2 1/2 1/2] % [nGaussIntPts nDims]
-        GaussIntegrationWeights = 1 % [nGaussIntPts 1]
+        % Eight integration points (full integration)
+        GaussIntegrationPoints = 0.5*[1 1 1]+(1/2*sqrt(3))*[-1 -1 -1 ; 1 -1 -1 ; 1 1 -1 ; -1 1 -1 ; -1 -1 1 ; 1 -1 1 ; 1 1 1 ; -1 1 1] % [nGaussIntPts nDims]
+        GaussIntegrationWeights = (1/8)*[1 ; 1 ; 1 ; 1 ; 1 ; 1 ; 1 ; 1] % [nGaussIntPts 1]
     end
     
 %% CONSTRUCTOR / DESTRUCTOR

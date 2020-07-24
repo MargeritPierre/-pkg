@@ -138,6 +138,43 @@ methods
     % Set
         this.Indices = indices ;
     end
+    
+    function [vars,ie] = getListOf(this,var,ie)
+    % Dispatch elements properties and functions
+    % "var" is a string or function handle
+    % corresponding to a common element function or property
+        if nargin<2 ; error('What do you want in the list ?') ; end
+    % Extract a subtable if needed
+        if nargin>2 ; this = this.subpart(ie) ; 
+        else
+            ie = 1:this.nElems ;
+        end 
+    % Apply to the element type list
+        if ischar(var)
+            if ismethod(this.Types,var)
+                vars = this.Types.(var) ;
+                if ~iscell(vars) ; vars = num2cell(vars,2:ndims(vars)) ; end
+            else
+                vars = {this.Types.(var)}  ;
+            end
+        elseif isa(var,'function_handle')
+            vars = arrayfun(var,this.Types,'UniformOutput','false')  ;
+        else ; error('Unsupported input') ; 
+        end
+    % Homogeneize if needed
+        nd = cellfun(@numel,vars) ;
+        vars = pkg.data.matchsize(2:max(nd),vars) ;
+        n1 = cellfun(@size,vars,repmat({1},size(vars))) ;
+    % Replicate
+        vars = [{[]} reshape(vars,1,[])] ;
+        vars = vars(this.TypeIdx+1) ;
+    % Concatenate
+        n1 = [0 ; n1(:)] ;
+        ie = repelem(ie(:),n1(this.TypeIdx+1),1) ;
+        vars = cat(1,vars{:}) ;
+%         [vars,ii] = pkg.data.padcat(1,vars{:}) ;
+%         ie = ie(ii) ;
+    end
 end
 
 

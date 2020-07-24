@@ -44,7 +44,7 @@ methods (Sealed)
         val = [e zeros(size(e,1),3-size(e,2))] ;
     end
     % Circumcenter
-    function C = centroid(this) ; C = permute(mean(cat(3,this.NodeLocalCoordinates),1),[3 2 1]) ; end
+    function C = centroid(this) ; C = permute(mean(pkg.data.padcat(3,this.NodeLocalCoordinates),1,'omitnan'),[3 2 1]) ; end
 end
 
 %% SHAPE FUNCTIONS DERIVATIVES
