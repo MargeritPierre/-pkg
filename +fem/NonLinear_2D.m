@@ -7,13 +7,14 @@ sc = 1/1 ; % units/meters
 L = 1/sc ; % beam length 
 w = 0.02/sc ; % beam width
 h = 0.03/sc ; % beam thickness
-s = 0.0025/sc ; % approximative initial element size
+s = 0.00125/sc ; % approximative initial element size
 El = 210e9*sc^2 ; % Young Modulus
 nu = 0.3 ; % Poisson ratio
 F1 = -1e6*s*sc ; % Incrementally applied force
 F2 = F1*1e-3 ; % Force perturbation in transverse direction
-Nit = 200 ; % number of iterations
+Nit = 50 ; % number of iterations
 tol = s/10 ; eps*1000 ; % BC tolerance
+updatePlotFreq = 0 ;
 
 x = linspace(0,L,ceil(L/s)+1)' ;
 mesh = pkg.geometry.mesh.Mesh(x) ;
@@ -62,6 +63,9 @@ set(gca,'projection','orthographic')
         f(BCload(:),1) = F1 ;
         f(BCload(:),2) = F2 ;
         f(dofBCu(:)) = [] ;
+        
+    % Empty sparse matrix
+        O = sparse(numel(ie),mesh.nNodes) ;
     
     
 % ITERATIVE SCHEME
@@ -71,13 +75,12 @@ set(gca,'projection','orthographic')
         t = tic ;
         
         % Gradient matrix
+        % dui_dxj = G{j}*u(:,i)
         G = mesh.gradMat(E,ie) ;
 
         % Strain computation
-        O = sparse(numel(ie),mesh.nNodes) ;
-        B = [   G{1} O ; ... E11 = dU1_dX1
-                O G{2} ; ... E22 = dU2_dX2
-                G{2} G{1}] ; ... 2E12 = dU1_dX2+dU2_dX1
+        % E11=du1_dx1 ; E22=du2_dx2 ; 2E12=du2_dx1+du1_dx2
+        B = [ G{1} O ; O G{2} ; G{2} G{1}] ;
         
 
         % Integration Weights
@@ -86,26 +89,35 @@ set(gca,'projection','orthographic')
         I = blkdiag(I{:}) ;
 
         % Mesh Stiffness Matrix
-        K = B'*I*C*B ;
+        K = B'*(I*C)*B ;
 
         % Clamped BC
         K(dofBCu(:),:) = [] ;
         K(:,dofBCu(:)) = [] ;
         
+        
         % Solve
         u = zeros(mesh.nNodes,mesh.nCoord) ;
-        u(~dofBCu(:)) = K\(f(:)*step(ii)-B(:,~dofBCu(:))'*I*SIG(:)) ;
+        ff = f(:)*step(ii)-B(:,~dofBCu(:))'*I*SIG(:) ;
+        du = K\ff ; % general case
+        K = (K+K')/2 ; du = K\ff ; % forced symmetry
+        u(~dofBCu(:)) = du ;
         
         % Compute stresses
         SIG = SIG + reshape(C*B*u(:),[],3) ;
         
+        % Update configuration
+        mesh.Nodes = mesh.Nodes + u ;
+        
         toc(t)
         
         % Display
-        mesh.Nodes = mesh.Nodes + u ;
-        pl.update ;
-        pl.Faces.FaceVertexCData = sqrt(sum(u.^2,2)) ;
-        drawnow ;
+        if ii<=1 || ii>=Nit || toc(lastPlotUpdatetime)>1/updatePlotFreq 
+            pl.Faces.FaceVertexCData = sqrt(sum(u.^2,2)) ;
+            pl.update ;
+            drawnow ;
+            lastPlotUpdatetime = tic ;
+        end
     end
 
 
