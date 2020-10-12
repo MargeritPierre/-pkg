@@ -11,7 +11,7 @@ end
 %% INFOS
 methods
     function n = nEdges(this) ; n = size(this.Edges,1) ; end
-    function n = nNodes(this) ; n = max(double(max(this.Edges(:))),numel(this.Nodes)) ; end
+    function n = nNodes(this) ; n = max(double(max([this.Edges(:) ; 0])),numel(this.Nodes)) ; end
 end
 
 %% CONSTRUCTORS
@@ -112,8 +112,28 @@ end
    
 %% WALK IN THE GRAPH
 methods
+    function idx = previousNodes(this,nn,asCell)
+    % Return the nodes attached to the given nodes by a INgoing edge
+    % asCell (bool)
+    %   - false: idx contains all next nodes indices
+    %   - true: idx{i} contains the node indices attached to nn(i)
+        if nargin<2 ; nn = 1:this.nNodes ; end
+        if nargin<3 ; asCell = true ; end
+        if islogical(nn) ; nn = find(nn) ; end
+        if asCell
+            A = this.adjMat ; 
+            A = A(:,nn) ;
+            [jj,ii] = find(A) ;
+            idx = accumarray(jj,ii,[numel(nn) 1],@(x){x}) ;
+        else
+            idx = ismember(this.Edges(2,:),nn) ;
+            idx = this.Edges(idx,1) ;
+            idx = unique(idx) ;
+        end
+    end
+    
     function idx = nextNodes(this,nn,asCell)
-    % Return the nodes attached to the given nodes
+    % Return the nodes attached to the given nodes by a OUTgoing edge
     % asCell (bool)
     %   - false: idx contains all next nodes indices
     %   - true: idx{i} contains the node indices attached to nn(i)
@@ -138,7 +158,7 @@ methods
         if nargin<2 ; nn = this.startNodes ; end
         if islogical(nn) ; nn = find(nn) ; end
         dist = NaN(1,this.nNodes) ;
-        dist(this.loneNodes) = Inf(1,this.nNodes) ;
+        dist(this.loneNodes) = Inf ;
         dist(nn) = 0 ;
         dd = 0 ;
         while any(isnan(dist))
