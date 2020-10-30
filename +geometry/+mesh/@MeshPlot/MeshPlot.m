@@ -79,6 +79,7 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
     % Changing the mesh ..
         function set.Mesh(this,mesh)
             this.Mesh = mesh ;
+            this.UpdateOnMeshChange = this.UpdateOnMeshChange ;
             this.update ;
         end
     % Changing the color (not implemented
@@ -147,6 +148,27 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         function m = get.NodeSizeMultiplier(this) ; m = get(this.EndNodes,'MarkerSize')/get(this.Nodes,'MarkerSize') ; end
     end
     
+%% UPDATE ON MESH CHANGES
+    properties
+        UpdateOnMeshChange = false
+    end
+    properties (Hidden,Transient)
+        MeshUpdateListeners = event.listener.empty
+    end
+    methods
+        function set.UpdateOnMeshChange(this,bool)
+            delete(this.MeshUpdateListeners)
+            if bool % re-start update on mesh changes
+                this.MeshUpdateListeners(end+1) = addlistener(this.Mesh,'Nodes','PostSet',@this.meshUpdateCallback) ;
+                this.MeshUpdateListeners(end+1) = addlistener(this.Mesh,'Elems','PostSet',@this.meshUpdateCallback) ;
+            end
+            this.UpdateOnMeshChange = bool ;
+        end
+        function meshUpdateCallback(this,varargin)
+            this.update ;
+            %drawnow ;
+        end
+    end
     
 %% GRAPHICS HANDLING
     methods %(Access = protected)
@@ -364,10 +386,11 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
 %% UNIQUE INDICES (DATA REDUCTION)
     methods
         function setPatch(~,pa,vertices,faces)
-        % Set a patch vertices and faces while reducing stroed data
+        % Set a patch vertices and faces while reducing strored data
             if nargin<4 % show vertices
                 faces = 1:size(vertices,1) ;
             else % reduce the number of vertices by taking only the used ones
+                faces(faces>size(vertices,1)) = NaN ;
                 [vv,~,ic] = unique(faces(faces>0)) ;
                 faces(faces>0) = ic ;
                 vertices = vertices(vv,:) ;

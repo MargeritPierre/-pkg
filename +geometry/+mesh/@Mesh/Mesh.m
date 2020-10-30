@@ -269,29 +269,22 @@ methods
             Q4 = mesh.Elems.isP1Quad ; if any(Q4) ; mesh.Elems.NodeIdx(Q4,:) = mesh.Elems.NodeIdx(Q4,[1 2 4 3]) ; end
     end
     
-    function sz = elemSize(this)
+    function sz = elemSize(this,features)
     % Compute the typical size of each element
     % 1D: length , 2D: area , 3D: volume
     % <TODO> Generalize this function
-        sz = zeros(this.nElems,1) ;
-        Xe = this.Elems.dataAtIndices(this.Nodes) ;
-%         isQ4 = this.Elems.isP1Quad ; if any(isQ4) ; Xe(isQ4,:,:) = Xe(isQ4,[1 2 4 3],:) ; end % Quad elements
-%         sz = polyarea(Xe(:,:,1),Xe(:,:,2),2) ;
-        for tt = 1:this.Elems.nTypes
-            elmtIdx = this.Elems.TypeIdx==tt ;
-            elmtType = this.Elems.Types(tt) ;
-            dN_de = elmtType.evalJacobianAt(elmtType.GaussIntegrationPoints) ; % [nIntPts nNodesInElmt nElmtDims]
-            dX_de = pkg.math.innerprod(Xe(elmtIdx,1:elmtType.nNodes,:),dN_de,2,2) ; % [nElmt nCoord nIntPts nElmtDims]
-            dX_de2 = sum(dX_de.*permute(dX_de,[1 2 3 5 4]),2) ; % squared jacobian  [nElmt 1 nIntPts nElmtDims nElmtDims] (for nCoord~=nElmtDims)
-            J = sqrt(pkg.data.matrixfun(@det,permute(dX_de2,[4 5 1 3 2]))) ; % [1 1 nElmts nIntPts] ;
-            sz(elmtIdx) = sum(permute(J,[3 4 1 2]).*elmtType.GaussIntegrationWeights(:)',2) ; % [nElmt 1]
-        end
+        if nargin<2 ; features = this.Elems ; end
+        [E,ie] = features.getListOf('GaussIntegrationPoints') ;
+        J = this.detJacobian(E,ie,features) ;
+        [W,~] = features.getListOf('GaussIntegrationWeights') ;
+        sz = abs(J).*W ;
+        sz = accumarray(ie(:),sz(:),[features.nElems 1]) ;
     end
     
 end
 
 
-%% POINT LOCALIZATION & INTERPOLATION
+%% POINT LOCALIZATION
 methods
     
     function [M,pp,ee] = isInside(this,P,features,X,tol,bboxOnly)
@@ -425,34 +418,39 @@ methods
                 else ; methodOrder = 2 ; end
                 e = repmat(e0,[nE 1]) ; % [nE nElmtNodes]
             % Loop until norm(x-P)<tol
-                notConverged = NaN ; it = 0 ;
+                res = NaN(this.nCoord,nE) ;
+                notConverged = 1:nE ; it = 0 ;
                 while ~isempty(notConverged) && it<itMax
                     it = it + 1 ;
+                    e_nc = e(notConverged,:) ; % [nE_nc nElmtDims]
+                    xe_nc = xe(:,notConverged,:) ;
                 % Shape function evalutation (+derivatives)
-                    N = elmtType.evalAt(e) ; % [nE nElmtNodes]
-                    dN_de = elmtType.evalJacobianAt(e) ; % [nE nElmtNodes nElmtDims]
-                    if methodOrder>1 ; d2N_de2 = elmtType.evalHessianAt(e) ; end % [nE nElmtNodes nElmtDims nElmtDims]
+                    N = elmtType.evalAt(e_nc) ; % [nE_nc nElmtNodes]
+                    dN_de = elmtType.evalJacobianAt(e_nc) ; % [nE_nc nElmtNodes nElmtDims]
+                    if methodOrder>1 ; d2N_de2 = elmtType.evalHessianAt(e_nc) ; end % [nE_nc nElmtNodes nElmtDims nElmtDims]
                 % Function guess evaluation (+derivatives)
-                    x = sum(permute(N,[3 1 2]).*xe,3) ; % [nCoord nE]
+                    x = sum(permute(N,[3 1 2]).*xe_nc,3) ; % [nCoord nE_nc]
                     if debug ; pl.XData = x(1,:) ; pl.YData = x(2,:) ; drawnow ; end
-                    dx_de = sum(permute(dN_de,[4 1 2 3]).*xe,3) ; % [nCoord nE 1 nElmtDims]
-                    if methodOrder>1 ; d2x_de2 = sum(permute(d2N_de2,[5 1 2 3 4]).*xe,3) ; end % [nCoord nE 1 nElmtDims nElmtDims]
-                    dx_de = permute(dx_de,[1 4 2 3]) ; % [nCoord nElmtDims nE]
-                    if methodOrder>1 ; d2x_de2 = permute(d2x_de2,[1 4 5 2 3]) ; end % [nCoord nElmtDims nElmtDims nE]
+                    dx_de = sum(permute(dN_de,[4 1 2 3]).*xe_nc,3) ; % [nCoord nE_nc 1 nElmtDims]
+                    if methodOrder>1 ; d2x_de2 = sum(permute(d2N_de2,[5 1 2 3 4]).*xe_nc,3) ; end % [nCoord nE_nc 1 nElmtDims nElmtDims]
+                    dx_de = permute(dx_de,[1 4 2 3]) ; % [nCoord nElmtDims nE_nc]
+                    if methodOrder>1 ; d2x_de2 = permute(d2x_de2,[1 4 5 2 3]) ; end % [nCoord nElmtDims nElmtDims nE_nc]
                 % Residue check
-                    res = x-P(:,isType) ; % [nCoord nE]
-                    notConverged = find(sum(res.^2,1)>tol^2) ;
+                    r = x-P(:,isType(notConverged)) ; % [nCoord nE_nc]
+                    res(:,notConverged) = r ; % [nCoord nE]
+                    stillNotConverged = sum(r.^2,1)>tol^2 ;
+                    r = r(:,stillNotConverged) ;
+                    notConverged = notConverged(stillNotConverged) ;
                     if isempty(notConverged) ; break ; end
                 % Update points where it needs to be
-                    J = dx_de(:,:,notConverged) ; % [nCoord nElmtDims nE]
-                    r = res(:,notConverged) ; % [nCoord nE]
+                    J = dx_de(:,:,stillNotConverged) ; % [nCoord nElmtDims nE_nc]
                     if methodOrder==1
                         de = pkg.math.mldivide(J,r) ;
                     else
-                        J2 = pkg.math.mtimes(permute(J,[2 1 3]),J) ;
-                        Jr = pkg.math.mtimes(permute(J,[2 1 3]),permute(r,[1 3 2])) ;
-                        H = sum(permute(res,[1 3 4 2]).*d2x_de2(:,:,:,notConverged),1) ; % [1 nElmtDims nElmtDims nE] ;
-                        H = J2 + permute(H,[2 3 4 1]) ; % [nElmtDims nElmtDims nE] ;
+                        J2 = pkg.math.mtimes(permute(J,[2 1 3]),J) ; % [nElmtDims nElmtDims nE_nc]
+                        Jr = pkg.math.mtimes(permute(J,[2 1 3]),permute(r,[1 3 2])) ; % [nElmtDims 1 nE_nc]
+                        H = sum(permute(r,[1 3 4 2]).*d2x_de2(:,:,:,stillNotConverged),1) ; % [1 nElmtDims nElmtDims nE_nc] ;
+                        H = J2 + permute(H,[2 3 4 1]) ; % [nElmtDims nElmtDims nE_nc] ;
                         de = pkg.math.mldivide(H,Jr) ;
                     end
                     e(notConverged,:) = e(notConverged,:) - de(:,:).' ;
@@ -486,37 +484,39 @@ methods
         if strcmp(mode,'allInAll') ; E = reshape(E,nPts,nElems,[]) ; end
         if debug ; delete(pl0) ; delete(pl) ; end
     end
+end
+
+%% MESH INTERPOLATION & DIFFERENCIATION
+methods
+% FOR THE FOLLOWING FUNCTIONS:
+% f_n are the value of any function at nodes
+% if ie is NOT given (or empty), P_or_E is global and is localized in the mesh first
+% if ie IS given, P_or_E is condidered to be local coordinates
     
-    function M = interpMat(this,P,ie,features,extrap,X,tol)
+    function M = interpMat(this,P_or_E,ie,features,extrap,X,tol)
     % Return a sparse interpolation matrix so that f(P) = M*f_n
-    % with f_n the value of any function at nodes
-    % if ie is NOT given (or empty), P is localized in the mesh first
-    % if ie IS given, P is condidered to be local coordinates
-        if nargin<2 ; P = this.centroid ; end
+        if nargin<2 ; P_or_E = this.centroid ; end
         if nargin<3 ; ie = [] ; end
         if nargin<4 ; features = this.Elems ; end
         if nargin<5 ; extrap = false ; end
         if nargin<6 ; X = this.Nodes ; end
         if nargin<7 ; tol = this.defaultTolerance(X) ; end
-        M = sparse(size(P,1),this.nNodes) ;
+        M = sparse(size(P_or_E,1),this.nNodes) ;
     % Localize the given points in the mesh if needed
-        if isempty(ie)  ; [E,ie] = this.localize(P,features,extrap,X,tol) ;
-        else ; E = P ; end
+        if isempty(ie)  ; [E,ie] = this.localize(P_or_E,features,extrap,X,tol) ;
+        else ; E = P_or_E ; end
         features = features.subpart(ie) ; 
     % Evaluate the element shape functions at the given coordinates
         for typeIdx = 1:features.nTypes
             elmtType = features.Types(typeIdx) ;
             elmtIdx = find(features.TypeIdx==typeIdx) ;
             N = elmtType.evalAt(E(elmtIdx,1:elmtType.nDims)) ;
-            M = M + sparse(repmat(elmtIdx(:),[1 elmtType.nNodes]),double(features.NodeIdx(elmtIdx,1:elmtType.nNodes)),N,size(P,1),this.nNodes) ;
+            M = M + sparse(repmat(elmtIdx(:),[1 elmtType.nNodes]),double(features.NodeIdx(elmtIdx,1:elmtType.nNodes)),N,size(P_or_E,1),this.nNodes) ;
         end
     end
     
-    function M = gradMat(this,P,ie,features,extrap,X,tol)
+    function M = gradMat(this,P_or_E,ie,features,extrap,X,tol)
     % Return sparse matrices M so that df(P)/dx_i = M{i}(P)*f_n
-    % with f_n the value of any function at nodes
-    % if ie is NOT given (or empty), P is localized in the mesh first
-    % if ie IS given, P is condidered to be local coordinates (E)
         if nargin<3 ; ie = [] ; end
         if nargin<4 ; features = this.Elems ; end
         if nargin<5 ; extrap = false ; end
@@ -526,8 +526,8 @@ methods
         if nargin<2 % element centroids
             E = features.getListOf('centroid') ;
         else % given points
-            if isempty(ie)  ; [E,ie] = this.localize(P,features,extrap,X,tol) ;
-            else ; E = P ; end
+            if isempty(ie)  ; [E,ie] = this.localize(P_or_E,features,extrap,X,tol) ;
+            else ; E = P_or_E ; end
             features = features.subpart(ie) ; 
         end
     % Evaluate the element shape function gradient at the given coordinates
@@ -545,6 +545,53 @@ methods
             for cc = 1:this.nCoord
                 M{cc} = M{cc} + sparse(iii,jjj,dN_dx(:,:,cc),size(E,1),this.nNodes) ;
             end
+        end
+    end
+    
+    function M = grad2Mat(this,P_or_E,ie,features,extrap,X,tol)
+    % Return sparse matrices M so that d2f(P)/(dx_i.dx_j) = M{i,j}(P)*f_n
+    % d2f_dx2 = (d_dx)(df_de.de_dx) = d2f_de2.de_dx.de_dx + df_de.d2e_dx2
+    % de_dx is the inverse Jacobian
+    % d2e_dx2 is the inverse Hessian
+        if nargin<3 ; ie = [] ; end
+        if nargin<4 ; features = this.Elems ; end
+        if nargin<5 ; extrap = false ; end
+        if nargin<6 ; X = this.Nodes ; end
+        if nargin<7 ; tol = this.defaultTolerance(X) ; end
+    % Localize the given points in the mesh
+        if nargin<2 % element centroids
+            E = features.getListOf('centroid') ;
+        else % given points
+            if isempty(ie)  ; [E,ie] = this.localize(P_or_E,features,extrap,X,tol) ;
+            else ; E = P_or_E ; end
+            features = features.subpart(ie) ; 
+        end
+    % Evaluate the element shape function gradient at the given coordinates
+        M = repmat({sparse(size(E,1),this.nNodes)},[this.nCoord this.nCoord]) ;
+        xe = features.dataAtIndices(X) ; % [nE nMaxNodesByElmt nCoord] 
+        for typeIdx = 1:features.nTypes
+            elmtType = features.Types(typeIdx) ;
+            elmtIdx = find(features.TypeIdx==typeIdx) ;
+            % Iverse Jacobian
+                dN_de = elmtType.evalJacobianAt(E(elmtIdx,1:elmtType.nDims)) ; % [nE nElmtNodes nElmtDims]
+                dx_de = permute(sum(xe(elmtIdx,1:elmtType.nNodes,:).*permute(dN_de,[1 2 4 3]),2),[1 3 4 2]) ; % [nE nCoord nElmtDims] 
+                de_dx = pkg.math.pinv(permute(dx_de,[2 3 1])) ; % [nElmtDims nCoord nE]
+            % Hessian
+                d2N_de2 = elmtType.evalHessianAt(E(elmtIdx,1:elmtType.nDims)) ; % [nE nElmtNodes nElmtDims nElmtDims]
+                %d2x_de2 = permute(sum(xe(elmtIdx,1:elmtType.nNodes,:).*permute(d2N_de2,[1 2 5 3 4]),2),[1 3 4 5 2]) ; % [nE nCoord nElmtDims nElmtDims]
+            % Second-order derivatives
+                d2N_de2 = permute(d2N_de2,[3 4 1 2]) ; % [nElmtDims nElmtDims nE nElmtNodes]
+                d2N_dxde = pkg.math.mtimes(d2N_de2,de_dx) ; % [nCoord nCoord nE nElmtNodes]
+                dN2_dx2 = pkg.math.mtimes(permute(de_dx,[2 1 3]),d2N_dxde) ; % [nCoord nCoord nE nElmtNodes]
+                dN2_dx2 = permute(dN2_dx2,[3 4 1 2]) ; % [nE nElmtNodes nCoord nCoord]
+            % Sparse matrices
+                iii = repmat(elmtIdx(:),[1 elmtType.nNodes]) ;
+                jjj = double(features.NodeIdx(elmtIdx,1:elmtType.nNodes)) ;
+                for c1 = 1:this.nCoord
+                    for c2 = 1:this.nCoord
+                        M{c1,c2} = M{c1,c2} + sparse(iii,jjj,dN2_dx2(:,:,c1,c2),size(E,1),this.nNodes) ;
+                    end
+                end
         end
     end
     
@@ -574,8 +621,12 @@ methods
             elmtType = features.Types(tt) ;
             dN_de = elmtType.evalJacobianAt(E(elmtIdx,:)) ; % [nE nNodesInElmt nElmtDims]
             dX_de = sum(Xe(elmtIdx,1:elmtType.nNodes,:).*permute(dN_de,[1 2 4 3]),2) ; % [nE 1 nCoord nElmtDims]
-            dX_de2 = sum(dX_de.*permute(dX_de,[1 4 3 2]),3) ; % squared jacobian  [nE nElmtDims 1 nElmtDims] (for nCoord~=nElmtDims)
-            J(elmtIdx) = sqrt(pkg.math.det(permute(dX_de2,[2 4 1 3]))) ; % [nE 1] ;
+            if elmtType.nDims==this.nCoord
+                J(elmtIdx) = pkg.math.det(permute(dX_de,[3 4 1 2])) ; % [1 1 nE 1] ;
+            else % (for nCoord~=nElmtDims) use the squared jacobian 
+                dX_de2 = sum(dX_de.*permute(dX_de,[1 4 3 2]),3) ; % [nE nElmtDims 1 nElmtDims]
+                J(elmtIdx) = sqrt(pkg.math.det(permute(dX_de2,[2 4 1 3]))) ; % [1 1 nE 1] ;
+            end
         end
     end
     
@@ -867,7 +918,7 @@ methods
             remove = full(sparse(remove(:),ones(numel(remove),1),true,mesh.nElems,1)) ; 
         end
         if ~any(remove) ; return ; end
-        mesh.Elems.Indices = mesh.Elems.Indices(~remove,:) ;
+        mesh.Elems = mesh.Elems.subpart(~remove) ;
         mesh.cullUnused ;
     end
 

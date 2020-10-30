@@ -27,6 +27,16 @@ methods
     function val = nTypes(this) ;  val = cellfun(@numel,{this.Types}) ; end
     % Number of nodes in each element
     function val = nNodes(this) ; val = sum(this.NodeIdx>0,2) ; end
+    % Number of edges in each element
+    function val = nEdges(this) 
+        nE = [0 [this.Types.nEdges]] ; 
+        val = nE(this.TypeIdx+1)' ; 
+    end
+    % Number of faces in each element
+    function val = nFaces(this) 
+        nF = [0 [this.Types.nFaces]] ; 
+        val = nF(this.TypeIdx+1)' ; 
+    end
     % Maximum number of nodes by element
     function val = nMaxNodesByElem(this) ;  [~,val] = cellfun(@size,{this.Indices}) ; val = val-1 ; end % Minus one because of the presence of TypeIdx
     % Unique list of node indices

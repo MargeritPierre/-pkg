@@ -1,4 +1,4 @@
-classdef Line < pkg.levelset.LevelSet
+classdef Line < pkg.geometry.levelset.LevelSet
 % Level set representing a Line
 
     properties
@@ -8,7 +8,7 @@ classdef Line < pkg.levelset.LevelSet
     methods
         function this = Line(varargin)
         % Class construtor
-            this = this@pkg.levelset.LevelSet() ;
+            this = this@pkg.geometry.levelset.LevelSet() ;
             if nargin==2
                 this.Points = [varargin{1}(:)' ; varargin{2}(:)'] ;
             elseif nargin==1

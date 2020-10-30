@@ -12,14 +12,19 @@ function X = mtimes(A,B)
     szB = size(B) ; 
     [n,k,m] = deal(szA(1),szA(2),szB(2)) ;
     if szB(1)~=k ; error('Incompatible sizes for A:[n k] and B:[k m]') ; end
-    SZ = [szA 1 1] ; SZ(1:2) = [] ;
-    A = A(:,:,:) ; B = B(:,:,:) ;
+    nDim = max(ndims(A),ndims(B)) ;
+    SZ = ones(1,nDim+2) ;
+    SZ(1:ndims(A)) = szA ;
+    SZ(1:ndims(B)) = max(SZ(1:ndims(B)),szB) ;
+    SZ(1:2) = [] ;
+    A = permute(A,[1 nDim+1 3:nDim 2]) ; % [n 1 sz1 sz2 ... k]
+    B = permute(B,[nDim+1 2 3:nDim 1]) ; % [1 m sz1 sz2 ... k]
 
 % Compute the product by permutation-summation
-    X = sum(permute(A,[1 4 3 2]).*permute(B,[4 2 3 1]),4) ;
+    X = sum(A.*B,ndims(A)) ;
     
 % Reshape X
-    X = reshape(X,[n m SZ]) ;
+    X = reshape(X,[n m SZ 1 1]) ;
 
 return
 

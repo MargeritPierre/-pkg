@@ -17,7 +17,7 @@ end
 
 
 %% PROPERTIES
-properties
+properties (SetObservable)
 % The list of nodes [nNodes nCoord]
     Nodes
 end

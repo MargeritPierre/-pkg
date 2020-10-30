@@ -12,13 +12,15 @@ methods
     function this = Skeleton(input)
     % Object constructor
         if nargin==0 ; return ; end
-        switch class(input)
-            case 'pkg.geometry.mesh.Mesh'
-                this.BoundaryPoints = input.Nodes(input.BoundaryNodes,:) ;
-                this.InsideFcn = @input.isInside ;
-            otherwise
-                this.BoundaryPoints = input ;
-                this.InsideFcn = @(P)inpolygon(P(:,1),P(:,2),this.BoundaryPoints(:,1),this.BoundaryPoints(:,2)) ;
+        if isa(input,'pkg.geometry.mesh.Mesh')
+            this.BoundaryPoints = input.Nodes(input.BoundaryNodes,:) ;
+            this.InsideFcn = @input.isInside ;
+        elseif isa(input,'pkg.geometry.levelset.LevelSet')
+            this.BoundaryPoints = input.discretizeContour ;
+            this.InsideFcn = @input.inside ;
+        else % Arbitrary points
+            this.BoundaryPoints = input ;
+            this.InsideFcn = @(P)inpolygon(P(:,1),P(:,2),this.BoundaryPoints(:,1),this.BoundaryPoints(:,2)) ;
         end
         this.buildSkeleton ;
     end
@@ -31,9 +33,15 @@ methods
         indices = padarray(tri,[0 1],1,'pre') ;
         elems = pkg.geometry.mesh.elements.ElementTable('Types',elmtType,'Indices',indices) ;
         this.DelaunayMesh = pkg.geometry.mesh.Mesh('Nodes',this.BoundaryPoints,'Elems',elems) ;
-    % Delete triangles that lie outside the object
-        inside = this.InsideFcn(this.DelaunayMesh.centroid) ;
-        this.DelaunayMesh.Elems = this.DelaunayMesh.Elems.subpart(inside) ;
+    % Delaunay mesh cleaning
+        % Remove triangles that lie outside the object
+            valid = this.InsideFcn(this.DelaunayMesh.centroid) ;
+        % Remove triangles with a too small area
+            X = this.DelaunayMesh.Elems.dataAtIndices(this.DelaunayMesh.Nodes) ;
+            areas = polyarea(X(:,:,1),X(:,:,2),2) ;
+            valid = valid & areas > 1e-6 * median(areas(:)) ;
+        % Keep only valid triangles
+            this.DelaunayMesh.Elems = this.DelaunayMesh.Elems.subpart(valid) ;
     % Compute element circumcenters
         X = this.DelaunayMesh.Elems.dataAtIndices(this.DelaunayMesh.Nodes) ;
         this.Nodes = pkg.math.circumcenter(permute(X,[2 3 1])) ;

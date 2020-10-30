@@ -2,7 +2,7 @@ classdef TableObject < handle
 %TABLEOBJECT Interface for an object containing a table of elements
 % Used in pkg.geometry.mesh.Mesh, pkg.geometry.mesh.FunctionSpace, etc.
     
-properties
+properties (SetObservable)
 % The table of elements
     Elems = pkg.geometry.mesh.elements.ElementTable
 end

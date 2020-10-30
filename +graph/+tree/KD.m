@@ -1,8 +1,9 @@
-function tree = KD(data,div,order)
+function tree = KD(data,div,order,splitSpace)
 %KD Build a kd tree from a point cloud
 % data: [nData nCoord]
 % div: number of partitions of the data at each recursion (median==2)
 % order: tree.nLayers = order+1
+% splitSpace: "index" or "coordinate"
 
 if nargin==0 ; error('Not enough arguments') ; end
 
@@ -14,6 +15,7 @@ data = data(:,:) ; % [nData nCoord]
 if nargin<2 ; div = 2 ; end
 % Automatic order: maximum order tree
 if nargin<3 ; order = max( ceil( log(nData)/log(div) ) -  1 ,0) ; end
+if nargin<4 ; splitSpace = 'coordinate' ; end
 
 % Tree nodes
     % number of nodes by tree layer
@@ -32,25 +34,49 @@ else
 end
 
 % Data splitting
-    % Data indices in cell array
-    IDX = cell(nNodesTotal,1) ;
-    % Root node with all data indices
-    IDX{1} = 1:nData ;
-    % Loop
-    prevLayerNodes = 1 ;
+    % Data mapping in [0 1[
+    data = (data-min(data,[],1))./range(data,1)*(1-1/nData) ;
+    % node indices: [nData nLayers]
+    nodeIdx = [ones(nData,1) zeros(nData,order)] ;
     for oo = 1:order
         coord = mod(oo-1,nCoord)+1 ;
-        currentNodes = prevLayerNodes(end) + (1:div^oo) ;
-        for nn = 1:numel(prevLayerNodes)
-            ind = IDX{prevLayerNodes(nn)} ;
-            [~,ii] = sort(data(ind,coord)) ;
-            splitind = ceil(linspace(0,numel(ii),div+1)) ;
-            lengths = diff(splitind) ; 
-            iii = mat2cell(ind(ii),1,lengths) ;
-            [IDX{currentNodes(div*(nn-1)+(1:div))}] = deal(iii{:}) ;
+        ni = (nodeIdx(:,oo)-min(nodeIdx(:,oo),[],1) + data(:,coord))*div ;
+        switch splitSpace
+            case 'index'
+                dd = nodeIdx(:,oo) + data(:,coord) ;
+                [~,si] = sort(dd) ;
+                ni = floor(linspace(0,1-1/nData,nData)*(div^oo)) + sum(nNodesInLayer(1:oo)) + 1 ;
+                nodeIdx(si,oo+1) = ni ;
+            case 'coordinate'
+                nodeIdx(:,oo+1) = floor(ni) + sum(nNodesInLayer(1:oo)) + 1 ;
         end
-        prevLayerNodes = currentNodes ;
     end
+    nDataInNode = accumarray(nodeIdx(:),1,[nNodesTotal 1]) ;
+    [~,dataIdx] = sort(nodeIdx,1) ;
+    IDX = mat2cell(dataIdx(:),nDataInNode) ;
+
+% Data splitting
+    % Data mapping in [0 1[
+    data = (data-min(data,[],1))./range(data,1)*(1-1/nData) ;
+    % node indices: [nData nLayers]
+    nodeIdx = linspace(0,1-1/nData,nData)'*nNodesInLayer(:)' ;
+    nodeIdx = [ones(nData,1) zeros(nData,order)] ;
+    for oo = 1:order
+        coord = mod(oo-1,nCoord)+1 ;
+        ni = (nodeIdx(:,oo)-min(nodeIdx(:,oo),[],1) + data(:,coord))*div ;
+        switch splitSpace
+            case 'index'
+                dd = nodeIdx(:,oo) + data(:,coord) ;
+                [~,si] = sort(dd) ;
+                ni = floor(linspace(0,1-1/nData,nData)*(div^oo)) + sum(nNodesInLayer(1:oo)) + 1 ;
+                nodeIdx(si,oo+1) = ni ;
+            case 'coordinate'
+                nodeIdx(:,oo+1) = floor(ni) + sum(nNodesInLayer(1:oo)) + 1 ;
+        end
+    end
+    nDataInNode = accumarray(nodeIdx(:),1,[nNodesTotal 1]) ;
+    [~,dataIdx] = sort(nodeIdx,1) ;
+    IDX = mat2cell(dataIdx(:),nDataInNode) ;
 
 % Build the tree
     tree = pkg.graph.tree.Tree ;
@@ -69,12 +95,12 @@ function tests
 
 
 %% KD-TREE FROM A LIST OF POINTS
-clearvars
+clearvars,clc
 
 nP = 1000000 ; nCoord = 2 ;
 P = rand(nP,nCoord) ;
-div = 4 ;
-order = 4 ; min(floor(log(nP)/log(div)),12) ;
+div = 10 ;
+order = max(floor(log(nP)/log(div))-1,0) ; 4 ;
 
 profile on
 tic
@@ -82,10 +108,11 @@ tree = pkg.graph.tree.KD(P,div,order) ;
 toc
 profile off
 
+%%
 clf ;
 axis equal
 IDX = {tree.Nodes(tree.endNodes).Data} ;
-colors = get(gca,'colororder') ;
+colors = rand(numel(IDX),3) ; get(gca,'colororder') ;
 for ii = 1:numel(IDX)
     cc = mod(ii-1,size(colors,1))+1 ;
     patch('vertices',P(IDX{ii},:),'faces',(1:numel(IDX{ii}))','facecolor','none','marker','.','markersize',5,'markeredgecolor',colors(cc,:)) ;

@@ -40,3 +40,26 @@ end
 errors
 
 
+%% COMPUTE THE SECOND GRADIENT OF A FUNCTION
+x = mesh.Nodes ; % the space variable
+tic ; G2 = mesh.grad2Mat ; toc % gradient matrices s.t. df/(dx_i.dx_j) = G2{i,j}*f ;
+% Tests {{f} {df_dx1dx1} {df_dx1dx2} {df_dx2dx1} {df_dx2dx2}]}
+tests = {} ;
+tests(end+1,:) = {x(:,1) zeros(mesh.nElems,1) zeros(mesh.nElems,1) zeros(mesh.nElems,1) zeros(mesh.nElems,1)} ;
+tests(end+1,:) = {x(:,2) zeros(mesh.nElems,1) zeros(mesh.nElems,1) zeros(mesh.nElems,1) zeros(mesh.nElems,1)} ;
+tests(end+1,:) = {x(:,1).^2 2*ones(mesh.nElems,1) zeros(mesh.nElems,1) zeros(mesh.nElems,1) zeros(mesh.nElems,1)} ;
+tests(end+1,:) = {x(:,1).*x(:,2) zeros(mesh.nElems,1) ones(mesh.nElems,1) ones(mesh.nElems,1) zeros(mesh.nElems,1)} ;
+tests(end+1,:) = {x(:,1).*x(:,2).^2 zeros(mesh.nElems,1) 2*mesh.Elems.meanDataAtIndices(x(:,2)) 2*mesh.Elems.meanDataAtIndices(x(:,2)) 2*ones(mesh.nElems,1)} ;
+%tests(end+1,:) = {sum(x.^2,2) 2*mesh.Elems.meanDataAtIndices(x(:,1)) 2*mesh.Elems.meanDataAtIndices(x(:,2)) 0*mesh.Elems.meanDataAtIndices(x(:,2))} ;
+% Apply
+errors = NaN(size(tests,1),mesh.nCoord^2) ;
+for tt = 1:size(tests,1)
+    f = tests{tt,1} ;
+    for cc = 1:min(mesh.nCoord^2,size(tests,2)-1)
+        d2f_dx2c = G2{cc}*f ;
+        errors(tt,cc) = norm(tests{tt,cc+1}-d2f_dx2c) ;
+    end
+end
+errors
+
+
