@@ -85,7 +85,7 @@ methods
     end
     function elmfac = get.ElemFaces(this)
         computeFeatures(this,'Faces',this.Faces) ;
-        elmfac = this.Faces ;
+        elmfac = this.ElemFaces ;
     end
     function computeFeatures(this,feat,data)
         if ~isempty(this.Elems) && isempty(data) 
@@ -110,15 +110,15 @@ methods
         M = sparse(this.Edges,varargin{:}) ;
     end
     function M = elem2face(this,varargin)
-    % Elements to Edges [nEdges nElems]: edg(:) = M*elmt(:)
-        M = this.Elems.contains(this.Faces) ;
+    % Elements to Edges [nFaces nElems]: edg(:) = M*elmt(:)
+        M = logical(this.ElemFaces) ;
     end
     function M = elem2edge(this,varargin)
     % Elements to Edges [nEdges nElems]: edg(:) = M*elmt(:)
-        M = this.Elems.contains(this.Edges) ;
+        M = logical(this.ElemEdges) ;
     end
     function M = face2edge(this,varargin)
-    % Faces to Edges [nFaces nElems]: edg(:) = M*face(:)
+    % Faces to Edges [nEdges nFaces]: edg(:) = M*face(:)
         M = this.Faces.contains(this.Edges) ;
     end
 end

@@ -9,14 +9,14 @@ end
 
 methods
     
-    function this = Skeleton(input)
+    function this = Skeleton(input,varargin)
     % Object constructor
         if nargin==0 ; return ; end
         if isa(input,'pkg.geometry.mesh.Mesh')
             this.BoundaryPoints = input.Nodes(input.BoundaryNodes,:) ;
             this.InsideFcn = @input.isInside ;
         elseif isa(input,'pkg.geometry.levelset.LevelSet')
-            this.BoundaryPoints = input.discretizeContour ;
+            this.BoundaryPoints = input.discretizeContour(varargin{:});
             this.InsideFcn = @input.inside ;
         else % Arbitrary points
             this.BoundaryPoints = input ;

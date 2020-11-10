@@ -406,6 +406,13 @@ methods
     % Linear indexing
         IDX(sub2ind(size(IDX),el,col)) = globIdx(sub2ind(size(globIdx),el,locIdx)) ;
     end
+    
+    function table = changeNodeIdx(this,newNodeIdx)
+    % Return a table with new node indices
+    % numel(newNodeIdx)>=max(this.NodeIdx(:))
+        table = this ;
+        table.Indices = [this.TypeIdx this.dataAtIndices(newNodeIdx)] ;
+    end
 end
 
 

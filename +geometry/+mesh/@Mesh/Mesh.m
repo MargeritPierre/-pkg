@@ -34,18 +34,20 @@ methods
             x = input ;
             switch ndims(x)
                 case 2 % wireframe mesh
+                    nCoord = size(x,2) ;
                     nodeIdx = [1:size(x,1)-1 ; 2:size(x,1)]' ;
                     types = pkg.geometry.mesh.elements.base.Bar ;
                 case 3 % surface mesh
-                    [nY,nX,~] = size(x) ;
+                    [nY,nX,nCoord] = size(x) ;
                     p1 = (1:nY-1)'+ nY*(0:nX-2) ; p2 = p1+nY ; p3 = p2+1 ; p4 = p1+1 ;
                     nodeIdx = [p1(:) p2(:) p3(:) p4(:)] ;
                     types = pkg.geometry.mesh.elements.base.Quadrangle ;
                 case 4 % volume mesh
                     error('Automatic volume mesh not implemented yet') ;
             end
-            this.Nodes = reshape(x,[],size(x,ndims(x))) ;
-            this.Elems = pkg.geometry.mesh.elements.ElementTable('Types',types,'NodeIdx',nodeIdx) ;
+            this.Nodes = reshape(x,[],nCoord) ;
+            idx = padarray(nodeIdx,[0 1],1,'pre') ;
+            this.Elems = pkg.geometry.mesh.elements.ElementTable('Types',types,'Indices',idx) ;
         else
     % Mesh from a specific object class
             switch class(input)
@@ -905,9 +907,14 @@ methods
         if ~islogical(remove) % convert to logical
             remove = full(sparse(remove(:),ones(numel(remove),1),true,mesh.nNodes,1)) ; 
         end
-        if ~any(remove) ; return ; end
-        mesh.Nodes = mesh.Nodes(~remove,:) ;
-        mesh.Elems.NodeIdx = this.Elems.dataAtIndices(cumsum(~remove(:))) ;
+        keep = ~remove ;
+        if all(keep) ; return ; end
+    % Remove nodes
+        mesh.Nodes = mesh.Nodes(keep,:) ;
+    % Change the element indices
+        newNodeIdx = double(keep) ;
+        newNodeIdx(keep) = 1:sum(keep) ;
+        mesh.Elems = mesh.Elems.changeNodeIdx(newNodeIdx(:)) ;
     end
 
     function mesh = removeElems(this,remove)
@@ -968,7 +975,7 @@ methods
     % Change the node list
         mesh.Nodes = meanMat*mesh.Nodes ;
     % New element list
-        mesh.Elems.NodeIdx = mesh.Elems.dataAtIndices(old) ;
+        mesh.Elems = mesh.Elems.changeNodeIdx(old) ;
     end
 
 end
@@ -989,21 +996,104 @@ end
 
 %% EXPERIMENTAL
 methods
-    function mesh = fillHoles(this)
+    function mesh = fillHoles(this,method)
     % Return a mesh that corresponds to the filling of holes in the mesh
     % works in 2D only for now
+        if nargin<2 ; method = 'distmesh' ; end
         mesh = copy(this) ; % always take a copy
         X = this.Nodes ;
     % Extract boundary curves
         [~,bndCrv] = this.boundaryCurves ;
     % Create new meshes from the inner contours and merge with the current mesh
         for bb = 2:numel(bndCrv) % the outer boundary curve is often the first; we skip it
-            fillMesh = pkg.geometry.mesh.fromBoundary(X(bndCrv{bb},:)) ;
+            switch method
+                case 'distmesh'
+                    x = X(bndCrv{bb},:) ; 
+                    x = unique(x,'rows','stable') ;
+                    lvlst = pkg.geometry.levelset.Polygon(x) ;
+                    dens = pkg.geometry.density.Polygon(x) ;
+                    h0 = min(dens.Le) ;
+                    fh = @dens.evalAt ;
+                    fillMesh = pkg.geometry.mesh.distMesh(lvlst...
+                                    ,'h0',h0 ...
+                                    ,'fh',fh ...
+                                    ,'t_dmax',0 ...
+                                    ,'p_dmax',1e-6 ...
+                                    ,'showMesh',false ...
+                                ) ;
+                otherwise
+                    fillMesh = pkg.geometry.mesh.fromBoundary(X(bndCrv{bb},:)) ;
+            end
             mesh = merge(mesh,fillMesh) ;
         end
     end
 end
 
+%% ELEMENT CONVERSION
+methods
+    function mesh = simplex(this)
+    % Convert to a simplex mesh
+        mesh = copy(this) ;
+        mesh.Elems = mesh.Elems.simplex ;
+    end
+    
+    function mesh = quadhex(this)
+    % Convert as much elements as possible to quad/hex elements
+    % First convert to simplex (tri/tetra elems)
+        mesh = simplex(this) ;
+    % Triangles to quads
+        % Find triangles
+            isTri = isa(mesh.Elems.Types,'pkg.geometry.mesh.elements.base.Triangle') ;
+            isTri = ismember(mesh.Elems.TypeIdx,find(isTri)) ;
+            tri = find(isTri) ;
+        % Attached interior edges
+            ele2edg = mesh.elem2edge ; 
+            intE = sum(ele2edg(:,tri),2)==2 ;
+            nE = full(sum(intE)) ;
+        % Attached triangles
+            [ee,tt] = find(ele2edg(intE,tri)) ;
+            [~,is] = sort(ee) ;
+            tt = reshape(tt(is),2,[])' ; % [nE 2]
+        % [Edg setdiff(Tri,Edg)] Nodes
+            nn = mesh.Elems.NodeIdx(tri(tt),1:3) ; % [nE*2 3]
+            nn = [mesh.Edges.NodeIdx(intE,1:2) reshape(nn,nE,6)] ; % [nE 8]
+        % Quads : keep only tri nodes that are not edg nodes
+            nn = reshape(real(unique(double(nn)'+(1:nE)*1i,'stable')),[4 nE])' ;
+            quads = nn(:,[1 3 2 4]) ; % [nE 4]
+        % Quad angles: scalar product of edge vectors
+            xq = reshape(mesh.Nodes(quads,:),nE,4,mesh.nCoord) ;
+            vec = xq(:,[2:end 1],:)-xq ; % [nE 4 mesh.nCoord]
+            vec = vec./sqrt(sum(vec.^2,3)) ; % [nE 4 mesh.nCoord]
+            scal = sum(vec.*vec(:,[2:end 1],:),3) ; % % [nE 4] should be in [0 1]
+        % Quad quality associated to the maximum angle deviation from 90°
+            Q = 1-max(abs(scal),[],2) ; % [nE 1]
+        % Sort edges by quad quality
+            [~,ee] = sort(Q,'descend') ;
+            tt = tt(ee,:) ;
+            quads = quads(ee,:) ;
+        % Cull edges that are attached to triangles already used
+            ee = [] ; ttt = unique(tt(:)) ;
+            for eee = 1:nE
+            % all the triangles attached to the edge are still available ?
+                if ~all(ismember(tt(eee,:),ttt)) ; continue ; end
+            % Add the edge
+                ee = [ee eee] ;
+            % Remove the edge's triangles from the list
+                ttt = setdiff(ttt,tt(eee,:)) ;
+                if isempty(ttt) ; break ; end
+            end
+        % Create the quad elements
+            qElmt = pkg.geometry.mesh.elements.base.Quadrangle ;
+            qIdx = padarray(quads(ee,:),[0 1],1,'pre') ;
+            quads = pkg.geometry.mesh.elements.ElementTable('Types',qElmt,'Indices',qIdx) ;
+        % Retrieve triangles that ave not been joined
+            tri = tri(setdiff(1:numel(tri),tt(ee,:))) ;
+    % Join all elements
+        mesh.Elems = [mesh.Elems.subpart(tri) quads] ;
+    % Sort elements
+        mesh.sortElems ;
+    end
+end
 
 %% VIZUALIZATION
 methods

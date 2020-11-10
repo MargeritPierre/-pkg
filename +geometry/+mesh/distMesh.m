@@ -1,50 +1,109 @@
 function mesh = distMesh(lvlst,varargin)
 %DISTMESH build a distance mesh from a pkg.geometry.levelset.LevelSet
+% mesh = distMesh(lvlst) automatic meshing
+% mesh = distMesh(lvlst,h0) uniform edge length h0 (scalar)
+% mesh = distMesh(lvlst,'Name','Value',...) custom parameters
 
-if ~isa(lvlst,'pkg.geometry.levelset.LevelSet')
-    error('The first argument MUST be a pkg.geometry.levelset.LevelSet object') ;
-end
+% Process input
+    if ~isa(lvlst,'pkg.geometry.levelset.LevelSet')
+        error('The first argument MUST be a pkg.geometry.levelset.LevelSet object') ;
+    end
+    if nargin==2 % given edge length
+        varargin = {'h0',varargin{1}} ;
+    end
+    args = struct(varargin{:}) ; 
 
-% Default input arguments
-    fd = @lvlst.Function ; % signed distance function
-    h0 = norm(range(lvlst.BoundingBox,1))/50 ; % initial edge length 
-    fh = @(p)h0*(ones(size(p,1),1)) ; %+3*abs(p(:,2))) ; % space-dependent edge length
-    pfix = ... % fixed points
-             lvlst.discretizeContour(fh) ... % variable-spaced contour points
-            ... lvlst.discretizeContour(h0) ... % uniform spaced contour points
-            ... lvlst.Kinks ... % only kink points
-            ... [] ... % no points
-        ;
-    initialDistribution = 'iso' ;
-    ax = gca ; % axes where to plot the mesh update
-    showMesh = ~isempty(ax) ;
-    debug = false && showMesh ; %link the meshplot to any mesh change
-
-% Parameters for convergence of the mesh
-    maxCount = 100 ; % max number of iterations
-    dptol = 0.01 ; % point displacement tolerance (convergence criterion, relative to mean density)
-    ttol = 0.01 ; % re-triangulation tolerance
-    qmin = 0*0.3 ; % Minimum triangle quality
-    Fscale = 1.2 ; % spring L0 relative to bar length
-    deltat = .3 ; % explicit time increment
-    p_dmax = 0.5*1e-0*h0; % maximum distance function allowed (remove pts)
-    t_dmax = -0.2*h0 ; % maximum distance function allowed (remove triangles)
-    geps = 1e-2*h0 ; %*sqrt(eps) % discrete gradient estim. step
-    tooShortThrs = 0.75 ;
-    tooLongThrs = 1.25 ;
-    plotFreq = Inf ; % update plot frequency
-    meshTag = 'DistMeshPreview' ;
-
-% Create initial distribution in bounding box (equilateral triangles)
-    p = lvlst.populate(h0,initialDistribution,fh) ;
+% Default input arguments 
+    % Distance function
+        if isfield(args,'fd') ; fd = args.fd ;
+        else ; fd = @lvlst.Function ;
+        end
+    % MESH DENSITY
+        % Initial (minimum) edge length 
+            if isfield(args,'h0') ; h0 = args.h0 ;
+            else ; h0 = norm(range(lvlst.BoundingBox,1))/50 ;
+            end
+        % Space-dependent edge length 
+            if isfield(args,'fh') ; fh = args.fh ;
+            else ; fh = @(p)h0*(ones(size(p,1),1)) ;
+            end
+        % Initial node distribution
+            if isfield(args,'p0') ; p0 = args.p0 ;
+            else ; p0 = lvlst.populate(h0,'iso',fh) ;
+            end
+        % Fixed nodes
+            if isfield(args,'pfix') ; pfix = args.pfix ;
+            else ; pfix =  lvlst.discretizeContour(fh) ... % variable-spaced contour points
+                        ... lvlst.discretizeContour(h0) ... % uniform spaced contour points
+                        ... lvlst.Kinks ... % only kink points
+                        ... [] ... % no points
+                        ;
+            end
+    % RELAXATION PARAMETERS
+        % Max number of iterations
+            if isfield(args,'maxCount') ; maxCount = args.maxCount ;
+            else ; maxCount = 100 ;
+            end
+        % Node displacement tolerance (convergence criterion, relative to local edge length)
+            if isfield(args,'dptol') ; dptol = args.dptol;
+            else ; dptol = 0.01 ;
+            end
+        % Re-triangulation tolerance (relative to local edge length)
+            if isfield(args,'ttol') ; ttol = args.ttol ;
+            else ; ttol = 0.01 ;
+            end
+        % Minimum triangle quality
+            if isfield(args,'qmin') ; qmin = args.qmin ;
+            else ; qmin = 0.1 ; 
+            end
+        % Spring L0 relative to bar length
+            if isfield(args,'Fscale') ; Fscale = args.Fscale ;
+            else ; Fscale = 1.2 ; 
+            end
+        % Implicit time increment (relaxation damping)
+            if isfield(args,'deltat') ; deltat = args.deltat ;
+            else ; deltat = 1 ;
+            end
+        % Maximum distance function allowed for Nodes (relative to local edge length)
+            if isfield(args,'p_dmax') ; p_dmax = args.p_dmax ;
+            else ; p_dmax = 0.5*1e-0 ;
+            end
+        % Maximum distance function allowed for Triangle centroids (relative to local edge length)
+            if isfield(args,'t_dmax') ; t_dmax = args.t_dmax ;
+            else ; t_dmax = -0.2 ;
+            end
+        % Too SHORT edges threshold (rel. to local edge length)
+            if isfield(args,'tooShortThrs') ; tooShortThrs = args.tooShortThrs ;
+            else ; tooShortThrs = 0.6 ;
+            end
+        % Too LONG edges threshold (rel. to local edge length)
+            if isfield(args,'tooLongThrs') ; tooLongThrs = args.tooLongThrs ;
+            else ; tooLongThrs = 1.4 ;
+            end
+        % Constraint boundary nodes to be on the levelset edge
+            if isfield(args,'bndCons') ; bndCons = args.bndCons ;
+            else ; bndCons = true ;
+            end
+        % Discrete gradient estim. step
+            if isfield(args,'geps') ; geps = args.geps ;
+            else ; geps = 1e-2*h0 ; 
+            end
+    % MESH PREVIEW
+        % Plot on every mesh change ?
+            if isfield(args,'debug') ; debug = args.debug ;
+            else ; debug = false ; 
+            end
+        % Mesh relaxation preview
+            if isfield(args,'showMesh') ; showMesh = args.showMesh ;
+            else ; showMesh = false || debug ; 
+            end
+        % Update plot frequency
+            if isfield(args,'plotFreq') ;plotFreq = args.plotFreq ;
+            else ; plotFreq = Inf ; 
+            end
 
 % Remove points outside the geometry
-    p = p(fd(p)<p_dmax,:) ;
-
-% Apply the rejection method
-%     r0=1./fh(p).^2 ;                % Probability to keep point
-%     pkeep = rand(size(p,1),1)<r0./max(r0) ;
-%     p = p(pkeep,:) ;                % Rejection method
+    p = p0(fd(p0)<p_dmax.*fh(p0),:) ;
     
 % Append fixed nodes
     if ~isempty(pfix), p=setdiff(p,pfix,'rows'); end     % Remove duplicated nodes
@@ -60,7 +119,8 @@ end
     if mesh.nNodes<=nfix ; infos{end+1} = 'out criterion: only fixed points'; end
     
 % Init mesh. vizu
-    delete(findobj(ax,'tag',meshTag)) ;
+    meshTag = 'DistMeshPreview' ;
+    delete(findobj(gca,'tag',meshTag)) ;
     if showMesh
         meshPlot = mesh.plot() ; 
         meshPlot.Tag = meshTag ; 
@@ -126,15 +186,15 @@ if optimize
             
             
             % 5. Graphical output of the current mesh
-                if toc(lastPlotTime)>1/plotFreq
-                    if showMesh ; meshPlot.Mesh = mesh ; end
-                    disp(['DistMesh:' ...
-                            , ' it: ' , num2str(count),'/',num2str(maxCount) ...
-                            , ' | Nodes: ' , num2str(mesh.nNodes) ...
-                            , ' | Triangles: ' , num2str(mesh.nElems) ...
-                            , ' | Re-Tri: ' , num2str(nReTri) ...
-                            , ' | dP: ' , num2str(dp2,3),'/',num2str(dptol,3) ...
-                    ]) ;
+                disp(['DistMesh:' ...
+                        , ' it: ' , num2str(count),'/',num2str(maxCount) ...
+                        , ' | Nodes: ' , num2str(mesh.nNodes) ...
+                        , ' | Triangles: ' , num2str(mesh.nElems) ...
+                        , ' | Re-Tri: ' , num2str(nReTri) ...
+                        , ' | dP: ' , num2str(dp2,3),'/',num2str(dptol,3) ...
+                ]) ;
+                if showMesh && toc(lastPlotTime)>1/plotFreq
+                    meshPlot.Mesh = mesh ;
                     drawnow ;
                     lastPlotTime = tic ;
                 end
@@ -146,9 +206,7 @@ if optimize
     % Gather infos
         infos{end+1} = [num2str(count),' iterations'] ;
         infos{end+1} = ['last dP: ',num2str(dp2)] ;
-        %infos{end+1} = [num2str(nReTri),' re-triangulations'] ;
-    % Clean up and plot final mesh
-        %[p,t,pix] = fixmesh(p,t) ;
+        infos{end+1} = [num2str(nReTri),' re-triangulations'] ;
     % Final Iteration
         if showMesh ; meshPlot.update ; end
         
@@ -180,69 +238,96 @@ end
             validNodes = true(mesh.nNodes,1) ;
             newNodes = [] ;
         % Cull out-of-boundaries
-            validNodes = validNodes & fd(mesh.Nodes)<p_dmax ;
-        % Cull nodes associated to too short edges
-            Le = mesh.elemSize(mesh.Edges) ; % current edge lengths
-            xe = mesh.centroid(mesh.Edges) ; % edge centroids
-            relLength = Le./fh(xe) ; % relative edge lengths
-            tooShort = relLength<tooShortThrs ;
-            if any(tooShort)
-                e2n = mesh.edge2node ;
-                e2n = e2n.*tooShort(:)' ; % keep only too short edges
-                e2n = e2n.*~sparse(1:nfix,1,true,mesh.nNodes,1) ; % remove fixed nodes from the analysis
-                [nn,ee] = find(e2n) ; % find free nodes attached to short edges
-                [~,is] = sort(relLength(ee),'ascend') ; % sort by edge shortness
-                nn = nn(is) ; ee = ee(is) ;
-                [~,un] = unique(ee,'stable') ; % delete only one node by short edge
-                validNodes(nn(un)) = false ;
+            validNodes = validNodes & fd(mesh.Nodes)<p_dmax.*fh(mesh.Nodes) ;
+        % Add/Remove nodes regarding the relative edge length
+            if tooShortThrs>eps || tooLongThrs<1/eps
+            % Relative edge length
+                xe = reshape(mesh.Nodes(mesh.Edges.NodeIdx,:),mesh.nEdges,2,mesh.nCoord) ;
+                Le2 = sum(diff(xe,1,2).^2,3) ; % current edge lengths
+                xe = mesh.centroid(mesh.Edges) ; % edge centroids
+                relLength = Le2./fh(xe).^2 ; % relative edge lengths
+            % Cull nodes associated to too short edges
+                tooShort = relLength<tooShortThrs ;
+                if any(tooShort)
+                    e2n = mesh.edge2node ;
+                    e2n(:,~tooShort) = 0 ; % keep only too short edges
+                    e2n(1:nfix,:) = 0 ; % remove fixed nodes from the analysis
+                    [nn,ee] = find(e2n) ; % find free nodes attached to short edges
+                    [~,is] = sort(relLength(ee),'ascend') ; % sort by edge shortness
+                    nn = nn(is) ; ee = ee(is) ;
+                    [~,un] = unique(ee,'stable') ; % delete only one node by short edge
+                    validNodes(nn(un)) = false ;
+                end
+            % Add nodes where edges are too long
+            % New nodes are the centroid of big triangles
+            % Because splitting edges introduces bad quality triangles
+                tooLong = relLength>tooLongThrs ;
+                if any(tooLong)
+                % Search for triangles with all edges too long
+                    ele2edg = mesh.elem2edge ;
+                    tooBig = sum(ele2edg(tooLong,:),1)'==mesh.Elems.nEdges ;
+                    midPt = mesh.centroid(mesh.Elems.subpart(tooBig)) ;
+                    midPt = midPt(fd(midPt)<p_dmax.*fh(midPt),:) ;
+                    newNodes = [newNodes ; midPt] ;
+                end
             end
         % Keep fixed nodes
             validNodes(1:nfix) = true ;
-        % Add nodes where edges are too long
-        % New nodes are the centroid of big triangles
-        % Because splitting edges introduces bad quality triangles
-            tooLong = relLength>tooLongThrs ;
-            if any(tooLong)
-            % Search for triangles with all edges too long
-                ele2edg = mesh.elem2edge ;
-                tooBig = sum(ele2edg(tooLong,:),1)'==mesh.Elems.nEdges ;
-                midPt = mesh.centroid(mesh.Elems.subpart(tooBig)) ;
-                midPt = midPt(fd(midPt)<p_dmax,:) ;
-                newNodes = [newNodes ; midPt] ;
-            end
         % Set new Nodes
-            mesh.Nodes = [mesh.Nodes(validNodes,:) ; newNodes];
-        % Re-triangulate
-            elems.Indices = padarray(delaunay(mesh.Nodes),[0 1],1,'pre') ;
-            mesh.Elems = elems ;
+            if ~all(validNodes) || ~isempty(newNodes)
+                mesh.Nodes = [mesh.Nodes(validNodes,:) ; newNodes];
+            % Re-triangulate
+                elems.Indices = padarray(delaunay(mesh.Nodes),[0 1],1,'pre') ;
+                mesh.Elems = elems ;
+            end
         % Mesh features to keep 
             validElems = true(mesh.nElems,1) ;
         % Cull features outside the boundary
-            validElems = validElems & fd(mesh.centroid)<=t_dmax ;
+            Xt = mesh.centroid ;
+            rdXt = fd(Xt)./fh(Xt) ; % relative signed distance of the triangle centroid
+            validElems = validElems & rdXt<=t_dmax ;
         % Remove triangles with a quality < qmin
         % Quality is the ratio between outside and inside circle radius*2
             if qmin
-                xe = mesh.Elems.dataAtIndices(mesh.Nodes) ; % [nElems 3 nCoord]
+                xe = reshape(mesh.Nodes(mesh.Elems.NodeIdx,:),mesh.nElems,3,mesh.nCoord) ;
                 Le = sqrt(sum((xe-xe(:,[2 3 1],:)).^2,3)) ;
                 a = Le(:,1) ; b = Le(:,2) ; c = Le(:,3) ;
                 q = (b+c-a).*(c+a-b).*(a+b-c)./(a.*b.*c) ;
                 validElems = validElems & q>=qmin ;
             end
-        % Keep triangles attached to fixed points
-            %valid = valid | logical(mesh.elem2node'*sparse(1:nfix,ones(1,nfix),true,mesh.nNodes,1)) ;
+        % Verify that no fixed point is lost
+            if ~all(validElems)
+                e2n = mesh.elem2node ;
+                validNodes = any(e2n(:,validElems),2) ;
+                cullFix = find(~validNodes(1:nfix)) ; % fixed points that should have been removed
+            % If needed, reactivate the attached triangle with the minimum signed distance
+                if ~isempty(cullFix)
+                    d = e2n(cullFix,:).*rdXt(:)' ; % distance of attached triangles centroids
+                    [~,tmin] = min(d,[],2) ;
+                    validElems(tmin) = true ;
+                end
+            end
         % Cull triangles
-            mesh.Elems = mesh.Elems.subpart(validElems) ;
-        % Cull unused nodes
-            mesh.cullUnused ;
+            if ~all(validElems)
+                mesh.Elems = mesh.Elems.subpart(validElems) ;
+            % Cull unused nodes
+                validNodes = ismember(1:mesh.nNodes,mesh.Elems.NodeIdx(:)) ;
+                validNodes(1:nfix) = true ; % keep fixed points
+                if ~all(validNodes)
+                    mesh.removeNodes(~validNodes) ;
+                end
+            end
         % Bring the boundary points on boundary edges
-            ipout = mesh.boundaryNodes ;
-            ipout(1:nfix) = false ; % do not move fixed points
-            if any(ipout) 
-            % Local gradient
-                dout = fd(mesh.Nodes(ipout,:)) ;
-                dgrad = gradfd(mesh.Nodes(ipout,:)) ;
-            % Correction
-                mesh.Nodes(ipout,:) = mesh.Nodes(ipout,:)-dout.*dgrad ;
+            if bndCons
+                ipout = mesh.boundaryNodes ;
+                ipout(1:nfix) = false ; % do not move fixed points
+                if any(ipout) 
+                % Local gradient
+                    dout = fd(mesh.Nodes(ipout,:)) ;
+                    dgrad = gradfd(mesh.Nodes(ipout,:)) ;
+                % Correction
+                    mesh.Nodes(ipout,:) = mesh.Nodes(ipout,:)-dout.*dgrad ;
+                end
             end
     end
 
@@ -289,8 +374,12 @@ end
     end
 
     function T = kinematicContraints
-        ibnd = setdiff(find(mesh.boundaryNodes),1:nfix) ;
         ii = [] ; jj = [] ; vv = [] ; 
+        % Get boundary nodes to constrain
+            ibnd = [] ;
+            if bndCons
+                ibnd = setdiff(find(mesh.boundaryNodes),1:nfix) ;
+            end
         % Interior points only are free to move
             ifree = setdiff(1:mesh.nNodes,[1:nfix,ibnd(:)']) ;
             ii = [ii ifree ifree+mesh.nNodes] ;
@@ -310,15 +399,7 @@ end
 
     function dgrad = gradfd(p)
     % Return the distance function gradient at given points p
-    % mean gradient over a quad
-        if isempty(p) ; dgrad = [] ; return ; end
-        sp = [-1 -1 ; 1 -1 ; 1 1 ; -1 1]/2 ; % [4 nCoord] shifts
-        pp = permute(p,[1 3 2]) + permute(sp,[3 1 2])*geps ; % [nP 4 nCoord] all points
-        d = reshape(fd(reshape(pp,[],size(p,2))),size(p,1),[]) ; % [nP 4] distance values
-        dgrad = (d*sp)*(1/geps) ; % [nP 2] gradient
-        normGrad = sqrt(sum(dgrad.^2,2)) ;
-        dgrad = dgrad./normGrad ;
-        if any(normGrad<1e-1) ; error('Vanishing gradient found !') ; end
+        dgrad = lvlst.gradient(p,true,geps) ;
     end
 
 

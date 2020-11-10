@@ -163,8 +163,7 @@ methods
     % normalize: boolean, normalize so that norm(grad)=1
     % geps: discrete step
     % grad: [nP nCoord]
-        if nargin<3 ; normalize = true ; end
-        if nargin<4 ; geps = norm(range(this.BoundingBox,1))*1e-6 ; end
+        if nargin<3 ; normalize = true ;
     % Mean gradient over a quad
         fd = @this.Function ; % distance function
         if isempty(p) ; dgrad = [] ; return ; end
