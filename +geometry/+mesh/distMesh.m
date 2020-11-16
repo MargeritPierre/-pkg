@@ -66,7 +66,7 @@ function mesh = distMesh(lvlst,varargin)
             end
         % Maximum distance function allowed for Nodes (relative to local edge length)
             if isfield(args,'p_dmax') ; p_dmax = args.p_dmax ;
-            else ; p_dmax = 0.5*1e-0 ;
+            else ; p_dmax = 0.001 ; 0.5 ;
             end
         % Maximum distance function allowed for Triangle centroids (relative to local edge length)
             if isfield(args,'t_dmax') ; t_dmax = args.t_dmax ;
@@ -74,11 +74,11 @@ function mesh = distMesh(lvlst,varargin)
             end
         % Too SHORT edges threshold (rel. to local edge length)
             if isfield(args,'tooShortThrs') ; tooShortThrs = args.tooShortThrs ;
-            else ; tooShortThrs = 0.6 ;
+            else ; tooShortThrs = 0.6 ; 0.49 ;
             end
         % Too LONG edges threshold (rel. to local edge length)
             if isfield(args,'tooLongThrs') ; tooLongThrs = args.tooLongThrs ;
-            else ; tooLongThrs = 1.4 ;
+            else ; tooLongThrs = 1.4 ; 2.01 ;
             end
         % Constraint boundary nodes to be on the levelset edge
             if isfield(args,'bndCons') ; bndCons = args.bndCons ;
@@ -245,15 +245,15 @@ end
                 xe = reshape(mesh.Nodes(mesh.Edges.NodeIdx,:),mesh.nEdges,2,mesh.nCoord) ;
                 Le2 = sum(diff(xe,1,2).^2,3) ; % current edge lengths
                 xe = mesh.centroid(mesh.Edges) ; % edge centroids
-                relLength = Le2./fh(xe).^2 ; % relative edge lengths
+                relLength2 = Le2./fh(xe).^2 ; % relative edge lengths
             % Cull nodes associated to too short edges
-                tooShort = relLength<tooShortThrs ;
+                tooShort = relLength2<tooShortThrs^2 ;
                 if any(tooShort)
                     e2n = mesh.edge2node ;
                     e2n(:,~tooShort) = 0 ; % keep only too short edges
                     e2n(1:nfix,:) = 0 ; % remove fixed nodes from the analysis
                     [nn,ee] = find(e2n) ; % find free nodes attached to short edges
-                    [~,is] = sort(relLength(ee),'ascend') ; % sort by edge shortness
+                    [~,is] = sort(relLength2(ee),'ascend') ; % sort by edge shortness
                     nn = nn(is) ; ee = ee(is) ;
                     [~,un] = unique(ee,'stable') ; % delete only one node by short edge
                     validNodes(nn(un)) = false ;
@@ -261,7 +261,7 @@ end
             % Add nodes where edges are too long
             % New nodes are the centroid of big triangles
             % Because splitting edges introduces bad quality triangles
-                tooLong = relLength>tooLongThrs ;
+                tooLong = relLength2>tooLongThrs^2 ;
                 if any(tooLong)
                 % Search for triangles with all edges too long
                     ele2edg = mesh.elem2edge ;

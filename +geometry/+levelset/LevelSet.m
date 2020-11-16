@@ -257,10 +257,13 @@ end
                 P = P(this.inside(P),:) ;
         end
         
-        function P = discretizeContour(this,dl)
+        function P = discretizeContour(this,dl,tol)
         % Divide the contour edges by a target distance dl
         % dl can be a scalar or a function handle dl = @(p)dl(P)
+        % tol is used to cull dupplicate points: P = unique(P,tol*min(dl))
             if nargin<2 ; dl = norm(range(this.BoundingBox,1))/100 ; end
+            if isa(dl,'function_handle') ; h0 = Inf ; else ; h0 = dl ; end
+            if nargin<3 ; tol = 1/2 ;end
         % Initialize
             P = [] ;
             t0 = linspace(0,1,1000)' ;
@@ -281,6 +284,7 @@ end
                     else
                         t = [0;1] ;
                     end
+                    h0 = min(h0,min(dl0(:))) ;
                 else
                     L = [0 ; cumsum(dL,1)] ; % cummulative length
                     if L(end)>dl
@@ -296,7 +300,12 @@ end
         % Add Kinks
             P = [P ; this.Kinks] ;
         % Cull duplicates
-            P = uniquetol(P,norm(range(this.BoundingBox,1))*1e-6,'ByRows',true,'DataScale',1) ;
+            P = uniquetol(P,tol*h0,'ByRows',true,'DataScale',1) ;
+        end
+        
+        function mesh = mesh(this,varargin)
+        % Mesh the levelset
+            mesh = pkg.geometry.mesh.distMesh(this,varargin{:}) ;
         end
     end
     
