@@ -16,7 +16,7 @@ classdef Interaction < handle & matlab.mixin.Heterogeneous
         
         function delete(this)
         % Class destructor
-            if~isempty(this.Viewport) ; this.Viewport.removeInteraction(this) ; end
+            if ~isempty(this.Viewport) ; this.Viewport.removeInteraction(this) ; end
         end
     end
     

@@ -169,6 +169,18 @@ methods
         C = reshape(C,table.nElems,this.nCoord) ;
     end
     
+    function [Ne,ed,Nn,no] = boundaryNormals(this)
+    % Return the normals at the boundaries 
+        [ed,~,no] = boundaryFeatures(this) ;
+        Ne = this.getNormals(this.Edges.subpart(ed)) ;
+        if nargout>=3 % boundary node normals: mean of attached boundary edges
+            e2n = this.edge2node ; % connectivity
+            e2n = e2n(no,ed) ; % only between boundary features
+            Nn = (e2n*Ne)./sum(e2n,2) ; % mean over attached edges
+            Nn = Nn./sqrt(sum(Nn.^2,2)) ;
+        end
+    end
+    
     function normals = nodeNormals(this)
     % (Mandatory for pkg.geometry.NodeObject)
     % Return the 3D normal to the mesh evaluated on nodes

@@ -58,12 +58,18 @@ classdef Viewport < handle & matlab.mixin.Copyable
                 reset(this.Axes) ;
             % Set the new axes
                 this.Axes = ax ;
-            % Change the selection rectangle axes 
+            % Change the viewport object's axes
                 set(this.SelectionRectangle,'Parent',ax) ;
+                set(this.BasePlanes,'Parent',ax) ;
+            % Set the new figure (will transfer the callbacks)
+                if isempty(ax)
+                    this.Figure = [] ;
+                    return ;
+                else
+                    this.Figure = ax.Parent ;
+                end
             % Set the new axes behavior
                 this.setAxesBehavior ;
-            % Set the new figure (will transfer the callbacks)
-                this.Figure = ax.Parent ;
         end
         
         function setAxesBehavior(this)
@@ -96,15 +102,25 @@ classdef Viewport < handle & matlab.mixin.Copyable
         
         function set.Figure(this,fig)
         % Change the object figure
-            callbacks = this.getCallbacks ;
-            % Apply the current callback state
+        % Apply the current callback state to the new figure
+            callbackSet = false ;
+            if ~isempty(this.Figure) && ~isempty(fig)
+                callbacks = this.getCallbacks ;
                 for cb = fieldnames(callbacks)'
                     fig.(cb{:}) = callbacks.(cb{:}) ;
                 end
-            % Delete all callbacks on the previous figure
+                callbackSet = true ;
+            end
+        % Delete all callbacks on the previous figure
+            if ~isempty(this.Figure)
                 this.setCallbacks('all',[]) ;
-            % Change
-                this.Figure = fig ;
+            end
+        % Change
+            this.Figure = fig ;
+        % Set default callback if needed
+            if ~callbackSet && ~isempty(fig)
+                this.setCallbacks() ;
+            end
         end
         
         function frame = getCameraFrame(this)

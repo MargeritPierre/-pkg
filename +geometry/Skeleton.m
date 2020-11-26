@@ -35,7 +35,12 @@ methods
         this.DelaunayMesh = pkg.geometry.mesh.Mesh('Nodes',this.BoundaryPoints,'Elems',elems) ;
     % Delaunay mesh cleaning
         % Remove triangles that lie outside the object
+        % Centroid outside
             valid = this.InsideFcn(this.DelaunayMesh.centroid) ;
+        % Circumcenter outside
+            X = this.DelaunayMesh.Elems.dataAtIndices(this.DelaunayMesh.Nodes) ;
+            circum = pkg.math.circumcenter(permute(X,[2 3 1])) ;
+            valid = valid & this.InsideFcn(circum) ;
         % Remove triangles with a too small area
             X = this.DelaunayMesh.Elems.dataAtIndices(this.DelaunayMesh.Nodes) ;
             areas = polyarea(X(:,:,1),X(:,:,2),2) ;

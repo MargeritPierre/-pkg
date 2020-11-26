@@ -2,18 +2,18 @@
 cla ; axis equal
 
 % SHAPE CONTOUR DEFINITION
-Nc = 101 ;
+Nc = 1001 ;
 if 0 % rectangle
     Cp = [-1 -1 ; 1 -1 ; 1 1 ; -1 1].*[10 8] ;
     Cp = interp1(Cp([1:end,1],:),linspace(1,size(Cp,1)+1,Nc)) ;
     Cp = Cp(1:end-1,:) ;
-elseif 1 % ellipse
+elseif 0 % ellipse
     a = 10 ; b = 5 ;
     phi = -18*pi/90 ;
     theta = linspace(0,2*pi,Nc) ;
     Cp = [a*cos(theta(:)) b*sin(theta(:))]*[cos(phi) -sin(phi) ; sin(phi) cos(phi)] ;
     Cp = Cp(1:end-1,:) ;
-elseif 1 % rectangle with elliptical hole (not working)
+elseif 0 % rectangle with elliptical hole (not working)
     rect = [-1 -1 ; 1 -1 ; 1 1 ; -1 1].*[10 8] ;
     rect = interp1(rect([1:end,1],:),linspace(1,size(rect,1)+1,Nc)) ;
     a = 5 ; b = 5 ; phi = -18*pi/90 ; theta = linspace(0,2*pi,Nc) ;
@@ -28,16 +28,20 @@ elseif 1 % smooth shapee
     Cp = Cp(1:end-1,:) ;
 end
 
-if 0 % skeleton
-    skel = pkg.geometry.Skeleton(Cp) ;
-    patches = skel.quadPatches ;
-    plot(skel.DelaunayMesh,'ShowLabels','Elems')%,'VisibleEdges','none') ;
-    plot(skel,'Color','r','EdgeWidth',1,'VisibleNodes','all','ShowLabels','Nodes')%,'HighlightEndNodes',true) ;
-    %plot(patches,'Color','b','EdgeWidth',0.5) ;
-elseif 1 % Simplex mesh
-    mesh = pkg.geometry.mesh.fromBoundary(Cp) ;
-    pl = plot(mesh) ;
-end
+skel = pkg.geometry.Skeleton(Cp) ;
+plot(Cp([1:end,1],1),Cp([1:end,1],2),'k','linewidth',1)
+plot(skel)
+
+% if 1 % skeleton
+%     skel = pkg.geometry.Skeleton(Cp) ;
+%     patches = skel.quadPatches ;
+%     plot(skel.DelaunayMesh,'ShowLabels','Elems')%,'VisibleEdges','none') ;
+%     plot(skel,'Color','r','EdgeWidth',1,'VisibleNodes','all','ShowLabels','Nodes')%,'HighlightEndNodes',true) ;
+%     %plot(patches,'Color','b','EdgeWidth',0.5) ;
+% elseif 1 % Simplex mesh
+%     mesh = pkg.geometry.mesh.fromBoundary(Cp) ;
+%     pl = plot(mesh) ;
+% end
 
 %%
 mesh.LaplacianSmoothing([1 0]*0.8,100)

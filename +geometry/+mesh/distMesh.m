@@ -21,7 +21,7 @@ function mesh = distMesh(lvlst,varargin)
     % MESH DENSITY
         % Initial (minimum) edge length 
             if isfield(args,'h0') ; h0 = args.h0 ;
-            else ; h0 = norm(range(lvlst.BoundingBox,1))/50 ;
+            else ; h0 = lvlst.defaultDiscreteLength() ;
             end
         % Space-dependent edge length 
             if isfield(args,'fh') ; fh = args.fh ;
@@ -66,7 +66,7 @@ function mesh = distMesh(lvlst,varargin)
             end
         % Maximum distance function allowed for Nodes (relative to local edge length)
             if isfield(args,'p_dmax') ; p_dmax = args.p_dmax ;
-            else ; p_dmax = 0.001 ; 0.5 ;
+            else ; p_dmax =  0.5 ; 0.001 ;
             end
         % Maximum distance function allowed for Triangle centroids (relative to local edge length)
             if isfield(args,'t_dmax') ; t_dmax = args.t_dmax ;
@@ -74,11 +74,11 @@ function mesh = distMesh(lvlst,varargin)
             end
         % Too SHORT edges threshold (rel. to local edge length)
             if isfield(args,'tooShortThrs') ; tooShortThrs = args.tooShortThrs ;
-            else ; tooShortThrs = 0.6 ; 0.49 ;
+            else ; tooShortThrs = 0.7 ; 0.49 ;
             end
         % Too LONG edges threshold (rel. to local edge length)
             if isfield(args,'tooLongThrs') ; tooLongThrs = args.tooLongThrs ;
-            else ; tooLongThrs = 1.4 ; 2.01 ;
+            else ; tooLongThrs = 1.3 ; 2.01 ;
             end
         % Constraint boundary nodes to be on the levelset edge
             if isfield(args,'bndCons') ; bndCons = args.bndCons ;
@@ -98,8 +98,13 @@ function mesh = distMesh(lvlst,varargin)
             else ; showMesh = false || debug ; 
             end
         % Update plot frequency
-            if isfield(args,'plotFreq') ;plotFreq = args.plotFreq ;
+            if isfield(args,'plotFreq') ; plotFreq = args.plotFreq ;
             else ; plotFreq = Inf ; 
+            end
+    % DISPLAY INFOS
+        % Display info frequency
+            if isfield(args,'displayFreq') ; displayFreq = args.displayFreq ;
+            else ; displayFreq = 0 ; 
             end
 
 % Remove points outside the geometry
@@ -107,12 +112,13 @@ function mesh = distMesh(lvlst,varargin)
     
 % Append fixed nodes
     if ~isempty(pfix), p=setdiff(p,pfix,'rows'); end     % Remove duplicated nodes
-    pfix = unique(pfix,'rows'); nfix=size(pfix,1) ;
+    pfix = unique(pfix,'rows') ; nfix = size(pfix,1) ;
     p = [pfix ; p];                                         % Prepend fix points
 
 % Build the mesh   
     elmtType = pkg.geometry.mesh.elements.base.Triangle ;
     mesh = pkg.geometry.mesh.Mesh ;
+    mesh.Nodes = p ;
     
 % If only fixed points remains, break
     infos = {} ; % to print informations at the end
@@ -131,7 +137,7 @@ function mesh = distMesh(lvlst,varargin)
     end
     
 % First mesh build
-    buildMesh(p) ;
+    buildMesh() ;
     
     
 optimize = true ; % numel(p)~=numel(pfix) ; % Do not optimize if ther is only fixed points
@@ -140,6 +146,7 @@ if optimize
 
     % Initialize data
         lastPlotTime = tic ;
+        lastDisplayTime = lastPlotTime ;
         count = 0 ;
         nReTri = 0 ;
     
@@ -171,7 +178,7 @@ if optimize
             % Rebuild the mesh IF NEEDED
                 dp2 = sqrt(max(sum(dp.^2,2)./fh(mesh.Nodes).^2)) ;
                 if dp2>ttol
-                    buildMesh(mesh.Nodes) ;
+                    buildMesh() ;
                     nReTri = nReTri+1 ;
                 end
 
@@ -182,17 +189,18 @@ if optimize
                 if count>=maxCount ; infos{end+1} = 'out criterion: iteration count' ; break ; end 
                 %if this.Stop.Value ; infos{end+1} = 'out criterion: user stop' ; break ; end 
 
-            % 
-            
-            
+            % Console display
+                if displayFreq && toc(lastDisplayTime)>1/displayFreq
+                    disp(['DistMesh:' ...
+                            , ' it: ' , num2str(count),'/',num2str(maxCount) ...
+                            , ' | Nodes: ' , num2str(mesh.nNodes) ...
+                            , ' | Triangles: ' , num2str(mesh.nElems) ...
+                            , ' | Re-Tri: ' , num2str(nReTri) ...
+                            , ' | dP: ' , num2str(dp2,3),'/',num2str(dptol,3) ...
+                    ]) ;
+                end
+                
             % 5. Graphical output of the current mesh
-                disp(['DistMesh:' ...
-                        , ' it: ' , num2str(count),'/',num2str(maxCount) ...
-                        , ' | Nodes: ' , num2str(mesh.nNodes) ...
-                        , ' | Triangles: ' , num2str(mesh.nElems) ...
-                        , ' | Re-Tri: ' , num2str(nReTri) ...
-                        , ' | dP: ' , num2str(dp2,3),'/',num2str(dptol,3) ...
-                ]) ;
                 if showMesh && toc(lastPlotTime)>1/plotFreq
                     meshPlot.Mesh = mesh ;
                     drawnow ;
@@ -204,9 +212,11 @@ if optimize
     % END OF THE OPTIMIZATION LOOP
     
     % Gather infos
-        infos{end+1} = [num2str(count),' iterations'] ;
-        infos{end+1} = ['last dP: ',num2str(dp2)] ;
-        infos{end+1} = [num2str(nReTri),' re-triangulations'] ;
+        if displayFreq
+            infos{end+1} = [num2str(count),' iterations'] ;
+            infos{end+1} = ['last dP: ',num2str(dp2)] ;
+            infos{end+1} = [num2str(nReTri),' re-triangulations'] ;
+        end
     % Final Iteration
         if showMesh ; meshPlot.update ; end
         
@@ -215,12 +225,12 @@ end
 % Sort elements
     mesh.sortElems ;
 
-% Format the output
-    infos{end+1} = [num2str(mesh.nNodes),' nodes'] ;
-    infos{end+1} = [num2str(mesh.nElems),' elements'] ;
-    
 % DISPLAY INFOS
-    disp(strjoin(infos,newline)) ;
+    if displayFreq
+        infos{end+1} = [num2str(mesh.nNodes),' nodes'] ;
+        infos{end+1} = [num2str(mesh.nElems),' elements'] ;
+        disp(strjoin(infos,newline)) ;
+    end
     
     
     
@@ -228,19 +238,14 @@ end
 % NESTED FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-    function buildMesh(p)
-        % First delaunay triangulation for node deletion
-            mesh.Nodes = p ;
-            idx = padarray(delaunay(p),[0 1],1,'pre') ;
-            elems = pkg.geometry.mesh.elements.ElementTable('Types',elmtType,'Indices',idx) ;
-            mesh.Elems = elems ; 
-        % Valid nodes
+    function buildMesh()
+        % Init node modifications
             validNodes = true(mesh.nNodes,1) ;
             newNodes = [] ;
         % Cull out-of-boundaries
             validNodes = validNodes & fd(mesh.Nodes)<p_dmax.*fh(mesh.Nodes) ;
         % Add/Remove nodes regarding the relative edge length
-            if tooShortThrs>eps || tooLongThrs<1/eps
+            if mesh.nEdges>0 && (tooShortThrs>eps || tooLongThrs<1/eps)
             % Relative edge length
                 xe = reshape(mesh.Nodes(mesh.Edges.NodeIdx,:),mesh.nEdges,2,mesh.nCoord) ;
                 Le2 = sum(diff(xe,1,2).^2,3) ; % current edge lengths
@@ -273,14 +278,16 @@ end
             end
         % Keep fixed nodes
             validNodes(1:nfix) = true ;
-        % Set new Nodes
-            if ~all(validNodes) || ~isempty(newNodes)
-                mesh.Nodes = [mesh.Nodes(validNodes,:) ; newNodes];
-            % Re-triangulate
-                elems.Indices = padarray(delaunay(mesh.Nodes),[0 1],1,'pre') ;
-                mesh.Elems = elems ;
+        % Set the new mesh nodes
+            mesh.Nodes = [mesh.Nodes(validNodes,:) ; newNodes] ;
+        % Delaunay triangulation with the new nodes
+            if ~all(validNodes) || ~isempty(newNodes) || mesh.nElems==0 || any(mesh.detJacobian<=0)
+                tri = delaunay(mesh.Nodes) ;
+                idx = padarray(tri,[0 1],1,'pre') ;
+                elems = pkg.geometry.mesh.elements.ElementTable('Types',elmtType,'Indices',idx) ;
+                mesh.Elems = elems ; 
             end
-        % Mesh features to keep 
+        % Mesh elements to keep 
             validElems = true(mesh.nElems,1) ;
         % Cull features outside the boundary
             Xt = mesh.centroid ;
@@ -339,7 +346,7 @@ end
     % xm is the edge centroid
         xe = mesh.Edges.dataAtIndices(mesh.Nodes) ;
         % Current Lengths
-            dx = reshape(diff(xe,1,2),mesh.nEdges,mesh.nCoord) ; 
+            dx = reshape(diff(xe,1,2),mesh.nEdges,mesh.nCoord)+eps ; 
             L = sqrt(sum(dx.^2,2)) ;
         % Target lengths (at middle of edges)
             xmm = reshape(mean(xe,2),mesh.nEdges,mesh.nCoord) ;

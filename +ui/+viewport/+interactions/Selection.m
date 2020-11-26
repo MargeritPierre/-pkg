@@ -41,7 +41,8 @@ classdef Selection < pkg.ui.viewport.Interaction
             this.SelectedObjects = gobjects(0) ;
             this.HighlightedObjects = gobjects(0) ;
             delete(this.SelectionRectangle)
-            if ~isempty(this.Viewport) && any(isvalid(this.Viewport))
+            if ~isempty(this.Viewport) && any(isvalid(this.Viewport)) ...
+                    && ~isempty(this.Viewport.Axes) && isvalid(this.Viewport.Axes)
                 this.SelectionRectangle = plot3(this.Viewport.Axes ...
                                                 ,NaN*[1 1 1 1 1] ...
                                                 ,NaN*[1 1 1 1 1] ...
@@ -254,7 +255,11 @@ classdef Selection < pkg.ui.viewport.Interaction
                 end
             % Get the current bounding box in the camera frame
                 % Global coordinates
-                    BBox = [this.SelectionRectangle.XData([1;3])' this.SelectionRectangle.YData([1;3])' this.SelectionRectangle.ZData([1;3])'] ;
+                    if isvalid(this.SelectionRectangle)
+                        BBox = [this.SelectionRectangle.XData([1;3])' this.SelectionRectangle.YData([1;3])' this.SelectionRectangle.ZData([1;3])'] ;
+                    else
+                        BBox = NaN(2,3) ;
+                    end
                 % Camera frame
                     CF = this.Viewport.getCameraFrame ;
                     BBox = BBox*CF' ;

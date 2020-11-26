@@ -8,15 +8,15 @@ h = 0.03/sc ; % height
 s = 0.001/sc ; % approximative initial element size
 El = 210e9*sc^2 ; % Young Modulus
 nu = 0.3 ; % Poisson ratio
-F = 1e6*s*sc ; % Applied force
-Fv = [0 1] ; % Force vector
+F = 1e9*s*sc ; % Applied force
+Fv = [1 0] ; % Force vector
 tol = eps*1000 ; % BC tolerance
 
 x = linspace(0,L,ceil(L/s)+1)' ;
 mesh = pkg.geometry.mesh.Mesh(x) ;
 mesh.extrude([0 1]*w,ceil(w/s)) ;
 
-%mesh.Elems = mesh.Elems.simplex ; % to tetrahedrons
+mesh.Elems = mesh.Elems.simplex ; % to triangles
 %mesh = mesh.sortElems ;
 
 pl = plot(mesh) ;

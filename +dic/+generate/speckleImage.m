@@ -1,8 +1,8 @@
-function I = speckleImage(MASK,nPts,medFiltSize,gaussFiltSize,edgeWidth,backgroundLvl)
+function I = speckleImage(MASK,density,medFiltSize,gaussFiltSize,edgeWidth,backgroundLvl)
 %SPECKLEIMAGE Generate a speckle image from a binary mask representing the object
 %geometry
 % MASK: binary mask [nI nJ]
-% nPts: number of initial speckle points
+% density: density of initial speckle points
 % medFiltSize: median filter radius
 % gaussFiltSize: gaussian filter radius
 % edgeWidth: add white edges with a given width
@@ -21,15 +21,16 @@ end
 sz = size(MASK) ;
 
 % Other default inputs
-if nargin<2 ; nPts = round(7/10*prod(sz)) ; end
+if nargin<2 ; density = 7/10 ; end
 if nargin<3 ; medFiltSize = 7 ; end
 if nargin<4 ; gaussFiltSize = 9 ; end
 if nargin<4 ; edgeWidth = 3 ; end
-if nargin<4 ; backgroundLvl = 0.1 ; end
+if nargin<4 ; backgroundLvl = 0.5 ; end
 
 % Texture generation
 I = false(sz) ;
 % Random distribution of active pixels
+    nPts = round(density*prod(sz)) ;
     ii = randi([1 sz(1)],nPts,1) ;
     jj = randi([1 sz(2)],nPts,1) ;
     I(sub2ind(size(I),ii,jj)) = true ;
@@ -41,7 +42,7 @@ I = double(I) ;
 % Set the background
     I(~MASK) = backgroundLvl ;
 % Add edges
-    I(MASK & ~bwmorph(MASK,'thin',edgeWidth)) = 1 ;
+    I(MASK & ~bwmorph(MASK,'thin',edgeWidth)) = 0 ;
 
 % Gaussian filter
 % Kernel
@@ -49,7 +50,9 @@ I = double(I) ;
     f = f(:)*f(:)' ; 
     f = f./sum(abs(f(:))) ;
 % Convolution
+    I = padarray(I,[1 1]*gaussFiltSize,'symmetric','both') ;
     I = conv2(I,f,'same') ;
+    I = I(gaussFiltSize+(1:sz(1)),gaussFiltSize+(1:sz(2)),:) ;
     
 end
 

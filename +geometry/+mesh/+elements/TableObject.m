@@ -157,46 +157,106 @@ end
 
 %% SPECIAL FEATURES
 methods
+% END FEATURES
+    function [no,el,ed,fa] = endFeatures(this)
+    % Return end features
+        e2n = this.elem2node ;
+        no = sum(e2n,2)<=1 ;
+        if nargout>=2 ; el = logical(e2n'*no) ; end
+        if nargout>=3 ; ed = logical(this.edge2node'*no) ; end
+        if nargout>=4 ; fa = logical(this.face2edge'*ed) ; end
+    end
     
-    function ends = endNodes(this)
+    function no = endNodes(this)
     % Return an array of logical, true if the node is an end node
     % A END node belongs to one or less elements
-        ends = sum(this.elem2node,2)<=1 ;
+        no = endFeatures(this) ;
     end
-
-    function outFace = outerFaces(this)
-    % Return an array of logical, true if the face is one an the outer surface
+    
+    function el = endElems(this)
+    % Return an array of logical, true if the elem is linked to an end node
+        [~,el] = endFeatures(this) ;
+    end
+    
+    function ed = endEdges(this)
+    % Return an array of logical, true if the edge is linked to an end node
+        [~,~,ed] = endFeatures(this) ;
+    end
+    
+    function fa = endFaces(this)
+    % Return an array of logical, true if the face is linked to an end node
+        [~,~,~,fa] = endFeatures(this) ;
+    end
+    
+% OUTER FEATURES
+    function [fa,el,ed,no] = outerFeatures(this)
+    % Return outer features: attached to a outer face
+        e2f = this.elem2face ;
+        fa = sum(e2f,2)<=1 ;
+        if nargout>=2 ; el = logical(e2f'*fa) ; end
+        if nargout>=3 ; ed = logical(this.face2edge*fa) | this.boundaryEdges ; end
+        if nargout>=4 ; no = logical(this.edge2node*ed) | this.endNodes ; end
+    end
+    
+    function fa = outerFaces(this)
+    % Return an array of logical, true if the face belongs to the outer surface
     % The face is on an outer surface if it is linked to one element at most
-        outFace = sum(this.elem2face,2)<=1 ;
+        fa = this.outerFeatures ;
+    end
+    
+    function el = outerElems(this)
+    % Return an array of logical, true if the elem is on the outer surface
+    % The elem is on an outer surface if it is linked to one outer face
+        [~,el] = this.outerFeatures ;
+    end
+    
+    function ed = outerEdges(this)
+    % Return an array of logical, true if the edge is on the outer surface
+    % The edge is on an outer surface if it is linked to one outer face or
+    % is a boundary edge
+        [~,~,ed] = this.outerFeatures ;
     end
 
-    function outNod = outerNodes(this)
+    function no = outerNodes(this)
     % Return an array of logical, true if the node is on an the outer surface
     % The node is on an outer surface if it is linked to an outer edge or
     % is an end node
-        outNod = logical(this.edge2node*outerEdges(this)) ;
-        outNod = outNod | this.endNodes ;
+        [~,~,~,no] = this.outerFeatures ;
     end
 
-    function outEdg = outerEdges(this)
-    % Return an array of logical, true if the edge is on the outer surface
-    % The edge is on the surface if it is linked to an outer face
-    % or is a boundary edge
-        outEdg = logical(this.face2edge*outerFaces(this)) ;
-        outEdg = outEdg | this.boundaryEdges ;
+% BOUNDARY FEATURES
+    function [ed,el,no,fa] = boundaryFeatures(this)
+    % Return features associated to boundaries
+        ele2edg = this.elem2edge ;
+        ed = sum(ele2edg,2)<=1 ;
+        if nargout>=2 ; el = logical(ele2edg'*ed) ; end
+        if nargout>=3 ; no = logical(this.edge2node*ed) | this.endNodes ; end
+        if nargout>=4 ; fa = logical(this.face2edge'*ed) ; end
     end
-
-    function bndEdg = boundaryEdges(this)
+    
+    function ed = boundaryEdges(this)
     % Return an array of logical, true if the edge is on the boundary
     % The edge is on the boundary if it is linked to at most one element
-        bndEdg = sum(this.elem2edge,2)<=1 ;
+        ed = boundaryFeatures(this) ;
     end
 
-    function bndNod = boundaryNodes(this)
+    function el = boundaryElems(this)
+    % Return an array of logical, true if the element is on the boundary
+    % The element is on the boundary if it is linked to a boundary edge
+        [~,el] = boundaryFeatures(this) ;
+    end
+
+    function no = boundaryNodes(this)
     % Return an array of logical, true if the node is on the boundary
-    % The node is on the boundary if it is linked to a boundary edge
-        bndEdg = boundaryEdges(this) ;
-        bndNod = logical(this.edge2node*bndEdg) ;
+    % The node is on the boundary if it is linked to a boundary edge or is
+    % an end node
+        [~,~,no] = boundaryFeatures(this) ;
+    end
+
+    function fa = boundaryFaces(this)
+    % Return an array of logical, true if the face is on the boundary
+    % The face is on the boundary if it is linked to a boundary edge
+        [~,~,~,fa] = boundaryFeatures(this) ;
     end
 
     function [crv,asCell,edgBndCrv] = boundaryCurves(this)

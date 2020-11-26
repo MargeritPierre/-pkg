@@ -3,11 +3,11 @@ classdef Viewport < handle & matlab.mixin.Copyable
 % A viewport is a figure with interactions enabled
     
     properties
-        Axes = matlab.graphics.axis.Axes.empty
+        Axes matlab.graphics.axis.Axes = matlab.graphics.axis.Axes.empty
     end
     
     properties (SetAccess = private)
-        Figure = matlab.ui.Figure.empty
+        Figure matlab.ui.Figure = matlab.ui.Figure.empty
     end
     
     properties (Dependent,SetAccess = protected)
@@ -20,7 +20,7 @@ classdef Viewport < handle & matlab.mixin.Copyable
     
     properties % Viewport Events
         EventBufferLength = 3 ;
-        EventData = pkg.ui.viewport.EventData.empty
+        EventData pkg.ui.viewport.EventData = pkg.ui.viewport.EventData.empty
     end
         
 
@@ -40,7 +40,7 @@ classdef Viewport < handle & matlab.mixin.Copyable
         function delete(this)
         % Class Destructor
             this.Interactions(:) = [] ;
-            this.setCallbacks('all',[]) ;
+            this.setCallbacks('all','') ;
         end
     end
     
@@ -88,7 +88,7 @@ classdef Viewport < handle & matlab.mixin.Copyable
     methods
         function init(this)
         % Initialization function
-            this.EventData = [] ;
+            this.EventData = pkg.ui.viewport.EventData.empty ;
             this.EventBufferLength = this.EventBufferLength ;
             this.setCallbacks ;
             this.evalInteractions(@init) ;
@@ -147,7 +147,12 @@ classdef Viewport < handle & matlab.mixin.Copyable
             % Set the new axes
                 this.Axes = ax ;
             % Set the new figure (will transfer the callbacks)
-                this.Figure = ax.Parent ;
+                if isempty(ax)
+                    this.Figure = [] ;
+                    return ;
+                else
+                    this.Figure = ax.Parent ;
+                end
             % Set the new axes behavior
                 this.setAxesBehavior ;
             % Notify interactions
@@ -184,15 +189,25 @@ classdef Viewport < handle & matlab.mixin.Copyable
         
         function set.Figure(this,fig)
         % Change the object figure
-            callbacks = this.getCallbacks ;
-            % Apply the current callback state
+        % Apply the current callback state to the new figure
+            callbackSet = false ;
+            if ~isempty(this.Figure) && ~isempty(fig)
+                callbacks = this.getCallbacks ;
                 for cb = fieldnames(callbacks)'
                     fig.(cb{:}) = callbacks.(cb{:}) ;
                 end
-            % Delete all callbacks on the previous figure
-                this.setCallbacks('all',[]) ;
-            % Change
-                this.Figure = fig ;
+                callbackSet = true ;
+            end
+        % Delete all callbacks on the previous figure
+            if ~isempty(this.Figure)
+                this.setCallbacks('all','') ;
+            end
+        % Change
+            this.Figure = fig ;
+        % Set default callback if needed
+            if ~callbackSet && ~isempty(fig)
+                this.setCallbacks() ;
+            end
         end
     end
     
@@ -201,7 +216,11 @@ classdef Viewport < handle & matlab.mixin.Copyable
     methods
         function child = get.Children(this)
         % Return the viewport objects that are not part of interactions
-            child = this.Axes.Children ;
+            if ~isempty(this.Axes) && isvalid(this.Axes)
+                child = this.Axes.Children ;
+            else
+                child = gobjects(0) ;
+            end
             % <TODO> Cull invalid children
         end
     end
@@ -211,6 +230,7 @@ classdef Viewport < handle & matlab.mixin.Copyable
     methods
         function frame = getCameraFrame(this)
         % Return the frame of the camera
+            if isempty(this.Axes) || ~isvalid(this.Axes) ; frame = NaN(3,3) ; return ; end
             v3 = this.Axes.CameraPosition-this.Axes.CameraTarget ;
             v2 = this.Axes.CameraUpVector ;
             v1 = cross(v2,v3) ;
@@ -221,24 +241,43 @@ classdef Viewport < handle & matlab.mixin.Copyable
         
         function c = getAxesCenter(this)
         % Return the axes center point
+            if isempty(this.Axes) || ~isvalid(this.Axes) ; c = NaN(1,3) ; return ; end
             c = mean([this.Axes.XLim(:) this.Axes.YLim(:) this.Axes.YLim(:)],1) ;
         end
         
+        function r = getAxesRange(this)
+        % Return the axes center point
+            if isempty(this.Axes) || ~isvalid(this.Axes) ; r = NaN(1,3) ; return ; end
+            r = range([this.Axes.XLim(:) this.Axes.YLim(:) this.Axes.YLim(:)],1) ;
+        end
+        
+%         function setCameraFrame(this,fr)
+%         % Set the frame of the camera while keeping the current target
+%         % only the two first vecotrs of fr are used: the third is deduced
+%             if isempty(this.Axes) || ~isvalid(this.Axes) ; return ; end
+%             fr = fr./sqrt(sum(fr.^2,2)) ; % normalize
+%             d = norm(this.Axes.CameraPosition-this.Axes.CameraTarget) ;
+%             %this.Axes.CameraPosition = fr(3,:)
+%             v3 = this.Axes.CameraPosition-this.Axes.CameraTarget ;
+%             v2 = this.Axes.CameraUpVector ;
+%             v1 = cross(v2,v3) ;
+%             v2 = cross(v3,v1) ;
+%             frame = [v1 ; v2 ; v3] ;
+%             frame = frame./sqrt(sum(frame.^2,2)) ;
+%         end
+        
         function setAxesCenter(this,c)
         % Position the axes center (without changing the range)
+            if isempty(this.Axes) || ~isvalid(this.Axes) ; return ; end
             r = getAxesRange(this) ;
             this.Axes.XLim = c(1) + r(1)/2*[-1 1] ;
             this.Axes.YLim = c(2) + r(2)/2*[-1 1] ;
             this.Axes.ZLim = c(3) + r(3)/2*[-1 1] ;
         end
         
-        function r = getAxesRange(this)
-        % Return the axes center point
-            r = range([this.Axes.XLim(:) this.Axes.YLim(:) this.Axes.YLim(:)],1) ;
-        end
-        
         function setAxesRange(this,r)
         % Position the axes center (without changing the range)
+            if isempty(this.Axes) || ~isvalid(this.Axes) ; return ; end
             c = getAxesCenter(this) ;
             this.Axes.XLim = c(1) + r(1)/2*[-1 1] ;
             this.Axes.YLim = c(2) + r(2)/2*[-1 1] ;
@@ -254,23 +293,27 @@ classdef Viewport < handle & matlab.mixin.Copyable
         % Move the axes center
             this.setAxesCenter(p) ;
         end
-%         
-%         function pan(this,motion)
-%         % Pan the viewport with a motion (in the camera plane)
-%             motion = mean(motion,1) ;
-%             motion = motion*this.CameraFrame' ;
-%             motion = motion*(this.CameraFrame.*[1;1;0]) ;
-%             this.move(motion) ;
-%         end
-%         
-%         function rotate(this,motion)
-%         % Rotate the viewport with a motion (around the camera target)
-%             motion = mean(motion,1) ;
-%             motion = motion*this.CameraFrame' ;
-%             motion = motion./this.getAxesRange ;
-%             this.Axes.View = this.Axes.View + motion(1:2) * 150 ;
-%         end
-%         
+
+        function pan(this,motion)
+        % Pan the viewport with a motion (in the camera plane)
+            motion = mean(motion,1) ;
+            CF = this.getCameraFrame ;
+            motion = motion*CF' ;
+            motion = motion*(CF.*[1;1;0]) ;
+            this.move(motion) ;
+        end
+
+        function rotate(this,angles)
+        % Rotate the viewport with angles (az,el,tilt)
+        % angles are in radians
+            if isempty(this.Axes) || ~isvalid(this.Axes) ; return ; end
+            angles = angles/2/pi*180 ;
+            camorbit(this.Axes,angles(1),angles(2)) ;
+            if numel(angles)>2
+                camroll(this.Axes,angles(3)) ;
+            end
+        end
+
         function zoom(this,factor,center)
         % Zoom the viewport by a factor
             if nargin<3 ; center = this.getAxesCenter ; end
@@ -281,6 +324,7 @@ classdef Viewport < handle & matlab.mixin.Copyable
         
         function fitToObjects(this,objects)
         % Set the viewport so that all objects can be seen
+            if isempty(this.Axes) || ~isvalid(this.Axes) ; return ; end
             if nargin<2 ; objects = findobj(this.Axes,'-property','XData') ; end
             bbox = NaN(2,3) ;
             for obj = objects(:)'
@@ -328,7 +372,7 @@ classdef Viewport < handle & matlab.mixin.Copyable
         function setCallbacks(this,actions,callback)
         % Set the callback state of the viewport
             if nargin<2 ; actions = 'all' ; end
-            if nargin<3 ; callback = @(src,evt)this.update(src,evt) ; end
+            if nargin<3 ; callback = @this.update ; end
             if any(isvalid(this.Figure))
                 if ismember(lower(actions),{'all','size'})
                     this.Figure.SizeChangedFcn = callback ;

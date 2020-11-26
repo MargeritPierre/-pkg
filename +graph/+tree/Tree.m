@@ -114,10 +114,8 @@ end
 
 %% GRAPHICAL REPRESENTATION
 methods
-    function h = plot(this,ax)
-    % Plot the tree in the current axes
-        if nargin<2 ; ax = gca ; end
-        h = hggroup(ax) ;
+    function X = autoNodeCoordinates(this)
+    % Return a set of node coordinates for plotting
         layer = this.nodeLayer ;
         nNodesInLayer = accumarray(layer(:),1) ;
         nNodesInPreviousLayers = [0 cumsum(nNodesInLayer(1:end-1))'] ;
@@ -125,14 +123,27 @@ methods
         x = x./nNodesInLayer(layer)' - 0.5./nNodesInLayer(layer)' ;
         x = x*max(nNodesInLayer) ;
         X = [x(:) layer(:)] ;
-        p = patch('vertices',X,'Faces',this.Edges,'Parent',h) ;
-        p.FaceColor = 'none' ;
-        p.EdgeColor = 'k' ;
-        p.Marker = 'o' ;
-        p.MarkerEdgeColor = 'k' ;
-        p.MarkerFaceColor = 'w' ;
-        p.MarkerSize = 10 ;
     end
+    
+%     function h = plot(this,ax)
+%     % Plot the tree in the current axes
+%         if nargin<2 ; ax = gca ; end
+%         h = hggroup(ax) ;
+%         layer = this.nodeLayer ;
+%         nNodesInLayer = accumarray(layer(:),1) ;
+%         nNodesInPreviousLayers = [0 cumsum(nNodesInLayer(1:end-1))'] ;
+%         x = (1:this.nNodes) - nNodesInPreviousLayers(layer) ;% - nNodesInLayer(layer)'/2 ;
+%         x = x./nNodesInLayer(layer)' - 0.5./nNodesInLayer(layer)' ;
+%         x = x*max(nNodesInLayer) ;
+%         X = [x(:) layer(:)] ;
+%         p = patch('vertices',X,'Faces',this.Edges,'Parent',h) ;
+%             p.FaceColor = 'none' ;
+%             p.EdgeColor = 'k' ;
+%             p.Marker = 'o' ;
+%             p.MarkerEdgeColor = 'k' ;
+%             p.MarkerFaceColor = 'w' ;
+%             p.MarkerSize = 10 ;
+%     end
 end
 
 end

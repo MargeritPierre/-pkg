@@ -312,11 +312,17 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
                                                     origin(:,1),origin(:,2),origin(:,3) ...
                                                     ,frames(:,1,vv),frames(:,2,vv),frames(:,3,vv) ...
                                                     ,'Color',colors(vv,:) ...
+                                                    ,'Parent',this.GraphicGroup ...
                                                     ) ;
                         end
                     end
                 % Set common properties
-                    set(this.Frames,'LineWidth',1,'MaxHeadSize',0.05,'AutoScaleFactor',0.15) ;
+                    set(this.Frames ...
+                        ,'LineWidth',1 ...
+                        ,'MaxHeadSize',0.05 ...
+                        ,'AutoScaleFactor',0.15 ...
+                        ,'Parent',this.GraphicGroup ...
+                        ) ;
             % Normals
                 delete(this.Normals)
                 this.Normals = gobjects(0) ;
@@ -324,10 +330,16 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
                     for ii = 1:numel(this.ShowNormals)
                         switch this.ShowNormals{ii}
                             case 'Nodes'
-                                origin = padarray(this.Mesh.Nodes,[0 3*this.Mesh.nCoord],0,'post') ;
+                                origin = padarray(this.Mesh.Nodes,[0 3-this.Mesh.nCoord],0,'post') ;
                                 normals = this.Mesh.nodeNormals ;
+                            case 'BoundaryNodes'
+                                [~,~,normals,no] = this.Mesh.boundaryNormals ;
+                                origin = padarray(this.Mesh.Nodes(no,:),[0 3-this.Mesh.nCoord],0,'post') ;
+                            case 'BoundaryEdges'
+                                [normals,ed] = this.Mesh.boundaryNormals ;
+                                origin = padarray(this.Mesh.centroid(this.Mesh.Edges.subpart(ed)),[0 3-this.Mesh.nCoord],0,'post') ;
                             otherwise
-                                origin = padarray(this.Mesh.centroid(this.ShowNormals{ii}),[0 3*this.Mesh.nCoord],0,'post') ;
+                                origin = padarray(this.Mesh.centroid(this.ShowNormals{ii}),[0 3-this.Mesh.nCoord],0,'post') ;
                                 normals = this.Mesh.getNormals(this.ShowNormals{ii}) ;
                         end
                         this.Normals(end+1) = quiver3( ...
@@ -336,7 +348,13 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
                                                 ) ;
                     end
                 % Set common properties
-                    set(this.Normals,'Color','k','LineWidth',1,'MaxHeadSize',0.05,'AutoScaleFactor',0.15) ;
+                    set(this.Normals ...
+                        ,'Color','k' ...
+                        ,'LineWidth',1 ...
+                        ,'MaxHeadSize',0.05 ...
+                        ,'AutoScaleFactor',0.15 ...
+                        ,'Parent',this.GraphicGroup ...
+                        ) ;
             % Labels (reinitialized each time...)
                 delete(this.Labels)
                 this.Labels = gobjects(0) ;
@@ -364,7 +382,7 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
                 % 3D position
                     pos = [pos zeros(size(pos,1),3-size(pos,2))] ;
                 % Merge superimposed indices
-                    [pos,ia,ic] = uniquetol(pos(ind,:),'ByRows',true,'OutputAllIndices',true) ;
+                    [pos,ia,~] = uniquetol(pos(ind,:),'ByRows',true,'OutputAllIndices',true) ;
                     ind = cellfun(@(ii)ind(ii),ia,'UniformOutput',false) ;
                 % Label text
                     txt = cellfun(@num2str,ind,'UniformOutput',false) ;

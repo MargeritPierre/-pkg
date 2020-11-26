@@ -63,17 +63,8 @@ methods
     % dir: directions of the edges taken into account
     % dir = 'both' (undirected graph), 'in' (indegree) or 'out' (outdegree)
         if nargin<2 ; dir = defaultDegreeDirection(this) ; end
-        N = this.nNodes ;
-        switch dir
-            case 'both'
-                idx = this.Edges(:) ;
-            case 'in'
-                idx = this.Edges(:,2) ;
-            case 'out'
-                idx = this.Edges(:,1) ;
-        end
-        deg = accumarray(idx,1,[N 1],[],[],true) ;
-        M = diag(deg) ;
+        deg = nodeDegree(this,dir) ;
+        M = spdiags(deg(:),0,this.nNodes,this.nNodes) ;
     end
     
     function dir = defaultDegreeDirection(this)
@@ -94,6 +85,21 @@ end
 
 %% NODE FEATURES
 methods
+    function deg = nodeDegree(this,dir)
+    % Return the node degree corresponding to a given direction
+        if nargin<2 ; dir = defaultDegreeDirection(this) ; end
+        N = this.nNodes ;
+        switch dir
+            case 'both'
+                idx = this.Edges(:) ;
+            case 'in'
+                idx = this.Edges(:,2) ;
+            case 'out'
+                idx = this.Edges(:,1) ;
+        end
+        deg = accumarray(idx,1,[N 1],[],[],true) ;
+    end
+    
     function nn = startNodes(this)
     % Return start nodes (nodes with no parents)
         nn = ~ismember(1:this.nNodes,this.Edges(:,2)') ;
@@ -112,48 +118,47 @@ end
    
 %% WALK IN THE GRAPH
 methods
-    function idx = previousNodes(this,nn,asCell)
-    % Return the nodes attached to the given nodes by a INgoing edge
-    % asCell (bool)
-    %   - false: idx contains all next nodes indices
-    %   - true: idx{i} contains the node indices attached to nn(i)
-        if nargin<2 ; nn = 1:this.nNodes ; end
-        if nargin<3 ; asCell = true ; end
-        if islogical(nn) ; nn = find(nn) ; end
-        if asCell
-            A = this.adjMat ; 
-            A = A(:,nn) ;
-            [jj,ii] = find(A) ;
-            idx = accumarray(jj,ii,[numel(nn) 1],@(x){x}) ;
-        else
-            idx = ismember(this.Edges(2,:),nn) ;
-            idx = this.Edges(idx,1) ;
-            idx = unique(idx) ;
+    function nodIdx = neightborNodes(this,dir)
+    % Return the indices of nehgtboring nodes corresponding to a given direction
+    % nodIdx is a cell array of size [nNodes 1]
+        if nargin<2 ; dir = defaultDegreeDirection(this) ; end
+    % Edge indices to use
+        switch dir
+            case 'both' % all attached nodes
+                starts = this.Edges(:) ;
+                ends = [this.Edges(:,2) ; this.Edges(:,1)] ;
+            case 'in' % previous nodes
+                starts = this.Edges(:,2) ;
+                ends = this.Edges(:,1) ;
+            case 'out' % next nodes
+                starts = this.Edges(:,1) ;
+                ends = this.Edges(:,2) ;
         end
+    % Sort the indices
+        [starts,is] = sort(starts,'ascend') ;
+        ends = ends(is) ;
+    % Put in a cell
+        nNodIdx = accumarray(starts(:),1,[this.nNodes 1]) ;
+        nodIdx = mat2cell(ends,nNodIdx) ;
     end
     
-    function idx = nextNodes(this,nn,asCell)
-    % Return the nodes attached to the given nodes by a OUTgoing edge
+    function prevIdx = previousNodes(this,nn)
+    % Return the nodes attached to the given nodes by an INgoing edge
     % asCell (bool)
-    %   - false: idx contains all next nodes indices
-    %   - true: idx{i} contains the node indices attached to nn(i)
-        if nargin<2 ; nn = 1:this.nNodes ; end
-        if nargin<3 ; asCell = true ; end
-        if islogical(nn) ; nn = find(nn) ; end
-        if asCell
-            A = this.adjMat ; 
-            A = A(:,nn) ;
-            [ii,jj] = find(A) ;
-            idx = accumarray(jj,ii,[numel(nn) 1],@(x){x}) ;
-        else
-            idx = ismember(this.Edges(1,:),nn) ;
-            idx = this.Edges(idx,2) ;
-            idx = unique(idx) ;
-        end
+        if this.Directed ; dir = 'in' ; else ; dir = 'both' ; end
+        prevIdx = this.neightborNodes(dir) ;
+        if nargin>1 ; prevIdx = prevIdx(nn) ; end
+    end
+    
+    function nextIdx = nextNodes(this,nn)
+    % Return the nodes attached to the given nodes by an OUTgoing edge
+        if this.Directed ; dir = 'out' ; else ; dir = 'both' ; end
+        nextIdx = this.neightborNodes(dir) ;
+        if nargin>1 ; nextIdx = nextIdx(nn) ; end
     end
     
     function dist = distanceTo(this,nn)
-    % Return the minimum distance from each node to a list of starting nodes
+    % Return the shortest distance from each node to a list of starting nodes
     % nn can be logical or a list of indices
         if nargin<2 ; nn = this.startNodes ; end
         if islogical(nn) ; nn = find(nn) ; end
@@ -181,12 +186,13 @@ methods
             b = true ; nodeIdx = 1:this.nNodes ; order = 2 ;
             return
         end
-        An = this.adjMat ;
+        A = this.adjMat ;
+        An = A ;
         nodeIdx = [] ; order = 1 ;
         maxOrder = min(this.nEdges,this.nNodes) ;
         while order<maxOrder && ~any(nodeIdx)
             order = order + 1 ;
-            An = An*An ;
+            An = An*A ;
             nodeIdx = logical(diag(An)) ;
         end
         nodeIdx = find(nodeIdx) ;
@@ -200,7 +206,7 @@ methods
     % C: [nNodes nComp] logical
         dir = defaultDegreeDirection(this) ;
         L = full(this.lapMat(dir)) ;
-        C = (null(L)) ;
+        C = null(L) ;
     end
     
     function sp = sparsestCut(this)
@@ -210,6 +216,27 @@ methods
         L = this.lapMat(dir) ;
         [W,~] = eigs(L,2,'sm') ;
         sp = W(:,2) ;
+    end
+end
+
+%% EULERIAN PATHS
+% paths that go trought every edge once and ONLY once 
+% (vertices can be attained more than once)
+methods
+    function bool = isEulerian(this)
+    % Is the graph Eulerian ?
+        if this.Directed % directed graphs
+        % at most 2 nodes can have different in & out degrees
+            inDeg = this.nodeDegree('in') ;
+            outDeg = this.nodeDegree('out') ;
+            diffDeg = inDeg-outDeg ;
+            bool = sum(abs(diffDeg))<=2 && sum(sign(diffDeg))==0 ;
+        else % undirected graphs
+        % at most 2 nodes can have uneven degreee
+            deg = this.nodeDegree ;
+            iseven = mod(deg,2)==0 ;
+            bool = sum(iseven)<=2 ;
+        end
     end
 end
 
@@ -230,6 +257,26 @@ methods
     end
 end
 
+%% GRAPHICAL REPRESENTATION
+methods
+    function X = autoNodeCoordinates(this)
+    % Return a set of node coordinates for plotting
+        if 0 % random distribution
+            X = rand(this.nNodes,2) ;
+        else % circle
+            t = (0:this.nNodes-1)'/this.nNodes*2*pi ;
+            X = [cos(t) sin(t)] ;
+        end
+    end
+    
+    function h = plot(this,varargin)
+    % Plot the tree in the current axes
+        h = pkg.graph.GraphPlot(varargin{:}) ;
+        h.Parent = gca ;
+        h.Graph = this ;
+    end
+end
+
 end
 
 
@@ -247,24 +294,29 @@ edges = unique(randi(nNodes,[nEdges 2]),'rows') ;
 
 profile on
 tic ;
-G = pkg.graph.Graph('Directed',true,'Edges',edges)
+G = pkg.graph.Graph('Directed',false,'Edges',edges) ;
 sn = G.startNodes ;
 en = G.endNodes ;
 ln = G.loneNodes ;
-nn = G.nextNodes ;
-I = (G.incMat) ;
-A = (G.adjMat) ;
-D = (diag(G.degMat)') ;
-L = (G.lapMat) ;
+idx = G.neightborNodes ;
+I = G.incMat ;
+A = G.adjMat ;
+D = G.degMat ;
+L = G.lapMat ;
 toc ;
 profile off
+
+% clf
+% pl = plot(G) ;
+% pl.ShowLabels = {'Nodes' 'Edges'} ;
+% axis equal
 
 
 %% CONNECTED COMPONENTS
 clearvars
 clc
 
-topo = 'custom' ;
+topo = 'rand' ;
 switch topo
     case 'rand'
         nNodes = 10 ; nEdges = 10 ;
@@ -274,7 +326,7 @@ switch topo
         N = 9 ;
         edges = [1:N ; circshift(1:N,1)]' ;
     case 'loops'
-        nLoops = 2 ; nodeRange = [3 5] ;
+        nLoops = 5 ; nodeRange = [3 10] ;
         edges = [] ; nNodes = 0 ;
         for ll = 1:nLoops
             N = randi(nodeRange) ;
@@ -282,7 +334,7 @@ switch topo
             nNodes = nNodes + N ;
         end
     case '8'
-        nLoops = 2 ; nodeRange = [3 5] ;
+        nLoops = 3 ; nodeRange = [10 10] ;
         edges = [] ; nNodes = 0 ;
         N = randi(nodeRange,[1 nLoops]) ;
         for ll = 1:nLoops
@@ -297,15 +349,21 @@ switch topo
         end
     case 'custom'
         edges = [1 2 ; 2 3 ; 3 1 ; 1 4 ; 4 5 ; 5 6] ; % spoon
-        edges = [1 2 ; 2 3 ; 3 4] ; % line
+        %edges = [1 2 ; 2 3 ; 3 4] ; % line
 end
 
 G = pkg.graph.Graph('Directed',true,'Edges',edges) ;
 tic
 [b,nodeIdx,order] = G.isCyclic
 C = G.connComp
-sp = G.sparsestCut
+e = G.isEulerian
+%sp = G.sparsestCut
 toc
+
+clf
+pl = plot(G) ;
+pl.ShowLabels = {'Nodes' 'Edges'} ;
+axis equal
 
 %%
 end

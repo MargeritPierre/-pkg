@@ -203,10 +203,13 @@ end
             in(in) = in(in) & d<dtol ;
             if nargout>1 ; on(on) = on(on) & abs(d)<dtol ; end
         end
-        
-        function skel = skeleton(this,varargin)
-        % Return the levelset skeleton
-            skel = pkg.geometry.Skeleton(this,varargin{:}) ;
+    end
+    
+%% GEOMETRY DISCRETIZATION
+    methods
+        function h0 = defaultDiscreteLength(this)
+        % Return a default discretization length
+            h0 = norm(range(this.BoundingBox,1))/40 ;
         end
         
         function P = populate(this,dx,distrib,fh)
@@ -218,7 +221,7 @@ end
         %   - 'random' : random distribution
             bboxDims = range(this.BoundingBox,1) ;
             nDims = size(this.BoundingBox,2) ;
-            if nargin<2 ; dx = norm(bboxDims)/100 ; end
+            if nargin<2 ; dx = defaultDiscreteLength(this) ; end
             if nargin<3 ; distrib = 'grid' ; end
             dx = dx(:)'.*ones(1,nDims) ;
             % Initial distribution
@@ -261,9 +264,9 @@ end
         % Divide the contour edges by a target distance dl
         % dl can be a scalar or a function handle dl = @(p)dl(P)
         % tol is used to cull dupplicate points: P = unique(P,tol*min(dl))
-            if nargin<2 ; dl = norm(range(this.BoundingBox,1))/100 ; end
+            if nargin<2 ; dl = defaultDiscreteLength(this) ; end
             if isa(dl,'function_handle') ; h0 = Inf ; else ; h0 = dl ; end
-            if nargin<3 ; tol = 1/2 ;end
+            if nargin<3 ; tol = 1/2 ; end
         % Initialize
             P = [] ;
             t0 = linspace(0,1,1000)' ;
@@ -301,6 +304,11 @@ end
             P = [P ; this.Kinks] ;
         % Cull duplicates
             P = uniquetol(P,tol*h0,'ByRows',true,'DataScale',1) ;
+        end
+        
+        function skel = skeleton(this,varargin)
+        % Return the levelset skeleton
+            skel = pkg.geometry.Skeleton(this,varargin{:}) ;
         end
         
         function mesh = mesh(this,varargin)
