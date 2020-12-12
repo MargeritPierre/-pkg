@@ -141,9 +141,7 @@ methods
     % Return a mesh corresponding to the element
         if nargin<2 ; X = this.NodeLocalCoordinates ; end
         table = elementTable(this) ;
-        m = pkg.geometry.mesh.Mesh(...
-                'Nodes',X ...
-                ,'Elems',table) ;
+        m = pkg.geometry.mesh.Mesh('Nodes',X,'Elems',table) ;
     end
     
     function [in,on] = isInside(this,E,tol)

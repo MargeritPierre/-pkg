@@ -60,8 +60,12 @@ classdef Quad8 < pkg.geometry.mesh.elements.AbstractElement
     
 % INTEGRATION QUADRATURE
     properties
-        GaussIntegrationPoints = [-1 -1 ; 1 -1 ; 1 1 ; -1 1] % [nGaussIntPts nDims]
-        GaussIntegrationWeights = 1/4 * [1 ; 1 ; 1 ; 1 ] % [nGaussIntPts 1]
+        % 4-point scheme
+        %GaussIntegrationPoints = ([-1 -1 ; 1 -1 ; 1 1 ; -1 1]/sqrt(3)+1)/2 % [nGaussIntPts nDims]
+        %GaussIntegrationWeights = 1/4 * [1 ; 1 ; 1 ; 1 ] % [nGaussIntPts 1]
+        % 9-point scheme: p.10 of www.code-aster.org/V2/doc/v14/fr/man_r/r3/r3.01.01.pdf
+        GaussIntegrationPoints = ([-1 -1 ; 1 -1 ; 1 1 ; -1 1; 0 -1; 1 0; 0 1; -1 0; 0 0]*0.774596669241483+1)/2 % [nGaussIntPts nDims]
+        GaussIntegrationWeights = 1/4 * [25 ; 25 ; 25 ; 25 ; 40 ; 40 ; 40 ; 40 ; 64]/81 % [nGaussIntPts 1]
     end
     
 %% CONSTRUCTOR / DESTRUCTOR

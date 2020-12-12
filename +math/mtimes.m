@@ -21,7 +21,7 @@ function X = mtimes(A,B)
     B = permute(B,[nDim+1 2 3:nDim 1]) ; % [1 m sz1 sz2 ... k]
 
 % Compute the product by permutation-summation
-    X = sum(A.*B,ndims(A)) ;
+    X = sum(A.*B,nDim+1) ;
     
 % Reshape X
     X = reshape(X,[n m SZ 1 1]) ;

@@ -380,8 +380,8 @@ methods
     % Make the list of element types unique
         [types,~,uTypeIdx] = unique(this.Types) ;
         validType = this.TypeIdx>0 ;
-        this.TypeIdx(validType) = uTypeIdx(this.TypeIdx(validType)) ;
         this.Types = types ;
+        this.TypeIdx(validType) = uTypeIdx(this.TypeIdx(validType)) ;
     % Cull duplicated element (same type AND node indices list)
         sortedIndices = [this.TypeIdx sort(this.NodeIdx,2)] ;
         [~,ie,ia] = unique(sortedIndices,'rows') ;

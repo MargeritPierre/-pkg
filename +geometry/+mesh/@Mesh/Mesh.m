@@ -43,7 +43,11 @@ methods
                     nodeIdx = [p1(:) p2(:) p3(:) p4(:)] ;
                     types = pkg.geometry.mesh.elements.base.Quadrangle ;
                 case 4 % volume mesh
-                    error('Automatic volume mesh not implemented yet') ;
+                    [n1,n2,n3,nCoord] = size(x) ;
+                    idx = reshape(1:n1*n2*n3,[n1 n2 n3]) ;
+                    i0 = reshape(idx(1:end-1,1:end-1,1:end-1,:),[],1) ;
+                    nodeIdx = i0 + repmat([0 n1 n1+1 1],[1 2]) + repelem(n1*n2*(0:1),1,4) ;
+                    types = pkg.geometry.mesh.elements.base.Hexahedron ;
             end
             this.Nodes = reshape(x,[],nCoord) ;
             idx = padarray(nodeIdx,[0 1],1,'pre') ;
@@ -512,7 +516,7 @@ methods
         if nargin<2 ; P_or_E = this.centroid ; end
         if nargin<3 ; ie = [] ; end
         if nargin<4 ; features = this.Elems ; end
-        if nargin<5 ; extrap = false ; end
+        if nargin<5 ; extrap = nargin<3 ; end
         if nargin<6 ; X = this.Nodes ; end
         if nargin<7 ; tol = this.defaultTolerance(X) ; end
         M = sparse(size(P_or_E,1),this.nNodes) ;
@@ -652,6 +656,20 @@ methods
         [E,ie] = features.getListOf('GaussIntegrationPoints') ;
         M = interpMat(this,E,ie,features) ;
         P = M*X ;
+    end
+    
+    function [E,W,ie] = integration(this,features,X)
+    % Return everything needed for integration
+    % E: element local coordinates of gauss points
+    % W: associated quadrature weights
+    % ie: element indices
+        if nargin<2 ; features = this.Elems ; end
+        if nargin<3 ; X = this.Nodes ; end
+        [E,ie] = features.getListOf('GaussIntegrationPoints') ;
+        [W,ii] = features.getListOf('GaussIntegrationWeights') ;
+        if ~isequal(ie,ii) ; error('Integration poits and weights mismatch.') ; end
+        J = detJacobian(this,E,ie,features,false,X) ;
+        W = J.*W ;
     end
     
 end
@@ -1111,9 +1129,8 @@ end
 methods
     function h = plot(this,varargin)
     % Simple plot of the mesh
+        varargin = [{'Mesh',this,'Parent',gca} varargin] ;
         h = pkg.geometry.mesh.MeshPlot(varargin{:}) ;
-        h.Parent = gca ; 
-        h.Mesh = this ;
     end
 end
 

@@ -105,7 +105,7 @@ delete(findobj(gcf,'type','hggroup')) ;
 % Localize pixels in the mesh
     profile on
     tic
-    [N,INSIDE] = pkg.dic.globalMapping(MASK,interpMesh,edgeMargin) ;
+    [N,INSIDE] = pkg.dic.global.mapping(MASK,interpMesh,edgeMargin) ;
     toc
     profile off
     
@@ -263,7 +263,7 @@ delete(findobj(gcf,'type','hggroup')) ;
 % Genrate images
     for iii = 1:nIMG
         interpMesh.Nodes = interpMesh.Nodes + dU(:,:,iii) ;
-        [Ni,INi] = pkg.dic.globalMapping(MASK,interpMesh,edgeMargin) ;
+        [Ni,INi] = pkg.dic.global.mapping(MASK,interpMesh,edgeMargin) ;
         X = [px(:) py(:)] - Ni*U(:,:,iii)/pixelsByMM ;
         defImg = interp2(px,py,refImage,X(:,1),X(:,2),'cubic',backgroundLvl) ;
         defImg(sum(INi,2)==0) = backgroundLvl ;

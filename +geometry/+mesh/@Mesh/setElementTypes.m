@@ -24,7 +24,7 @@ if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
     end
     
 % New list of nodes coordinates and indices
-    Xe = mesh.Elems.dataAtIndices(mesh.X.Values) ; % [nElems nMaxNodesByElem nCoord] ;
+    Xe = mesh.Elems.dataAtIndices(mesh.Nodes) ; % [nElems nMaxNodesByElem nCoord] ;
     X = [] ;
     NodeIdx = zeros(mesh.nElems,max([newElmtTypes.nNodes]),'uint32') ;
     for ee = 1:nElmtTypes
@@ -49,7 +49,7 @@ if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
     NodeIdx = reshape(nn(NodeIdx),mesh.nElems,max([newElmtTypes.nNodes])) ;
     
 % Assign to the element
-    mesh.X.Values = X ;
+    mesh.Nodes = X ;
     mesh.Elems = pkg.geometry.mesh.elements.ElementTable('Types',newElmtTypes,'Indices',[mesh.Elems.TypeIdx NodeIdx]) ;
     
 

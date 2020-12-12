@@ -133,6 +133,7 @@ function mesh = distMesh(lvlst,varargin)
         meshPlot.VisibleNodes = 'all' ;
         meshPlot.BoundaryEdges.EdgeColor = 'r' ;
         meshPlot.BoundaryEdges.LineWidth = 2 ;
+        meshPlot.Selected.Nodes = 1:nfix ;
         if debug ; meshPlot.UpdateOnMeshChange = true ; end
     end
     

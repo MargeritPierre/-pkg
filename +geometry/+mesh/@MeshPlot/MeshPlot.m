@@ -4,6 +4,7 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
 %% PROPERTIES
     properties
         Mesh = pkg.geometry.mesh.Mesh.empty
+        NodeCoordinates = [] ;
         CData = [] 
         GraphicGroup = gobjects(0)
         VisibleNodes = 'none' ;
@@ -79,7 +80,16 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
     % Changing the mesh ..
         function set.Mesh(this,mesh)
             this.Mesh = mesh ;
+            this.NodeCoordinates = mesh.Nodes ;
             this.UpdateOnMeshChange = this.UpdateOnMeshChange ;
+            this.update ;
+        end
+    % Changing the node coordinates
+        function set.NodeCoordinates(this,coord)
+            if size(coord,1)~=this.Mesh.nNodes ; error('Wrong size') ; end
+            coord = coord(:,1:min(end,3)) ;
+            coord = padarray(coord,[0 3-size(coord,2)],0,'post') ;
+            this.NodeCoordinates = coord ;
             this.update ;
         end
     % Changing the color (not implemented
@@ -237,21 +247,23 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
             if ~this.Initialized ; return ; end
             if isempty(this.Mesh) ; return ; end
             % Add dummy nodes for display purposes
-                vertices = [this.Mesh.Nodes ; NaN(1,this.Mesh.nCoord)] ;
+                vertices = this.NodeCoordinates ;
+                vertices(end+1,:) = NaN ;
                 edgIdx = [this.Mesh.Edges.indicesWithNaNs ones(this.Mesh.nEdges,1).*this.Mesh.nNodes+1] ;
-            % Set vertices to patches
-                %ppp = findobj(this.GraphicGroup,'type','patch') ;
-                %set(ppp,'Vertices',vertices) ;
             % Faces
-                switch this.VisibleFaces
-                    case 'all'
-                        visibleFaces = true(this.Mesh.nFaces,1) ;
-                    case 'outer'
-                        visibleFaces = this.Mesh.outerFaces ;
-                    otherwise
-                        visibleFaces = false(this.Mesh.nFaces,1) ;
+                if ~isempty(this.Mesh.Faces)
+                    switch this.VisibleFaces
+                        case 'all'
+                            visibleFaces = true(this.Mesh.nFaces,1) ;
+                        case 'outer'
+                            visibleFaces = this.Mesh.outerFaces ;
+                        otherwise
+                            visibleFaces = false(this.Mesh.nFaces,1) ;
+                    end
+                    faces = this.Mesh.Faces.subpart(visibleFaces) ;
+                    faces = faces.simplex ; % to display complicated elements
+                    this.setPatch(this.Faces,vertices,faces.indicesWithNaNs) ;
                 end
-                this.setPatch(this.Faces,vertices,this.Mesh.Faces.subpart(visibleFaces).indicesWithNaNs) ;
             % Edges
                 switch this.VisibleEdges
                     case 'all'
