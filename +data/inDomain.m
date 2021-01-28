@@ -168,7 +168,7 @@ function kdTree
     en = find(tree.endNodes) ;
     dd = {tree.Nodes(en).Data} ;
     nd = cellfun(@numel,dd) ;
-    newEdges = [reshape(repelem(en(:),nd),[],1) cat(2,dd{:})'+tree.nNodes] ;
+    newEdges = [reshape(repelem(en(:),nd),[],1) reshape(cat(2,dd{:})',[],1)+tree.nNodes] ;
     tree.Edges = [tree.Edges ; newEdges] ;
     tree.Nodes(end+nInt) = pkg.graph.Node ;
     
