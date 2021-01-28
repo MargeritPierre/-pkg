@@ -261,7 +261,9 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
                             visibleFaces = false(this.Mesh.nFaces,1) ;
                     end
                     faces = this.Mesh.Faces.subpart(visibleFaces) ;
-                    faces = faces.simplex ; % to display complicated elements
+                    if ~isa(this.Mesh.Elems.Types,'pkg.geometry.mesh.elements.base.BaseElement')
+                        faces = faces.simplex ; % to display complicated elements
+                    end
                     this.setPatch(this.Faces,vertices,faces.indicesWithNaNs) ;
                 end
             % Edges

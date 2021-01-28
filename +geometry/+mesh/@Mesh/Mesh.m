@@ -258,6 +258,45 @@ methods
     % Normalize
         frames = frames./sqrt(sum(frames.^2,2)) ;
     end
+    
+    function F = getOrthoFrames(this,features,E)
+    % Return orthogonal frames of features 
+    % F row vectors [v1;v2;v3], size [3 3 nFeat]
+        if nargin<2 ; features = this.Elems ; end
+        if nargin<3 ; E = 'centroid' ; end
+    % Normal vector
+        v3 = this.getNormals(features,E) ;
+    % Is the normal same as x1 ?
+        isV3x1 = 1-abs(sum(v3.*[1 0 0],2))<0.1 ; % 
+    % Second vector
+        v0 = [1 0 0].*~isV3x1 + [0 -1 0].*isV3x1 ;
+        v2 = pkg.math.vectprod(v3,v0) ;
+    % First vector
+        v1 = pkg.math.vectprod(v2,v3) ;
+    % Frames
+        F = cat(3,v1,v2,v3) ;
+        F = F./sqrt(sum(F.^2,2)) ;
+        F = permute(F,[3 2 1]) ;
+    end
+    
+    function Y = inLocalFrame(this,X,features)
+    % Return the coordinates Y of a set of points X in the local feature frame F
+    % X = Y*F -> Y = X*inv(F)
+    % X global coordinates [nFeat sz nCoord==3]
+    % Y "local" coordinates [nFeat [anysize] nCoord==3]
+        if nargin<3 ; features = this.Elems ; end
+    % Size of X
+        sz = [size(X)] ; nFeat = sz(1) ; nCoord = sz(end) ; nDims = numel(sz) ;
+    % Shift to the feature centroid
+        X = X-reshape(this.centroid(features),[nFeat ones(1,nDims-2) nCoord])  ; % [nFeat [anysize] nCoord==3]
+    % Feature frame at the centroid
+        F = this.getFrames(features) ; % [nCoord==3 nCoord==3 nFeat]
+        iF = pkg.math.inv(F) ; % [nCoord==3 nCoord==3 nFeat]
+    % Projection
+        iF = permute(iF,[3+(0:nDims-2) 2 1]) ; % [nFeat [anysize] nCoord==3 nCoord==3] (nDims+1)
+        X = permute(X,[1:nDims-1 nDims+1 nDims]) ; % [nFeat [anysize] 1 nCoord] (nDims+1)
+        Y = sum(X.*iF,nDims+1) ;
+    end
 
     function mesh = sortElems(this,dir)
     % Sort the element nodes of a planar mesh in clockwise 

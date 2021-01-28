@@ -43,7 +43,13 @@ if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
                     Te = Te./sqrt(sum(Te.^2,2)) ;
                     Te = bndEdge2Node*Te ;
                 % Normals
-                    Ne = Te*[0 -1 ; 1 0] ;
+                    switch mesh.nCoord
+                        case 1
+                        case 2
+                            Ne = Te*[0 -1 ; 1 0] ;
+                        case 3
+                            Ne = Te*[0 -1 0 ; 1 0 0 ; 0 0 1] ;
+                    end
                     Ne = Ne./sqrt(sum(Ne.^2,2)) ;
                 % Weights
                     switch weights

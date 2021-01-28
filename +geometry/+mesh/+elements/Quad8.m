@@ -60,12 +60,30 @@ classdef Quad8 < pkg.geometry.mesh.elements.AbstractElement
     
 % INTEGRATION QUADRATURE
     properties
-        % 4-point scheme
-        %GaussIntegrationPoints = ([-1 -1 ; 1 -1 ; 1 1 ; -1 1]/sqrt(3)+1)/2 % [nGaussIntPts nDims]
-        %GaussIntegrationWeights = 1/4 * [1 ; 1 ; 1 ; 1 ] % [nGaussIntPts 1]
-        % 9-point scheme: p.10 of www.code-aster.org/V2/doc/v14/fr/man_r/r3/r3.01.01.pdf
-        GaussIntegrationPoints = ([-1 -1 ; 1 -1 ; 1 1 ; -1 1; 0 -1; 1 0; 0 1; -1 0; 0 0]*0.774596669241483+1)/2 % [nGaussIntPts nDims]
-        GaussIntegrationWeights = 1/4 * [25 ; 25 ; 25 ; 25 ; 40 ; 40 ; 40 ; 40 ; 64]/81 % [nGaussIntPts 1]
+        GaussIntegrationPoints
+        GaussIntegrationWeights
+    end
+    methods (Static)
+        function [p,w] = intScheme(int)
+        % Return an integration scheme
+            switch int
+                case 'full' % 8-point scheme
+                    p = ([-1 -1 ; 1 -1 ; 1 1 ; -1 1; 0 -1; 1 0; 0 1; -1 0; 0 0]*0.774596669241483+1)/2 ;
+                    w = 1/4 * [25 ; 25 ; 25 ; 25 ; 40 ; 40 ; 40 ; 40 ; 64]/81 ;
+                case 'reduced' % 4-point scheme
+                    p = ([-1 -1 ; 1 -1 ; 1 1 ; -1 1]/sqrt(3)+1)/2 ;
+                    w = 1/4 * [1 ; 1 ; 1 ; 1 ] ;
+                otherwise ; error('Integration scheme not supported') ;
+            end
+        end
+    end
+    methods
+        function setIntegration(this,int)
+        % Set the element integration scheme
+            [p,w] = this.intScheme(int) ;
+            this.GaussIntegrationPoints = p ;
+            this.GaussIntegrationWeights = w ;
+        end
     end
     
 %% CONSTRUCTOR / DESTRUCTOR
@@ -75,6 +93,7 @@ classdef Quad8 < pkg.geometry.mesh.elements.AbstractElement
             this = this@pkg.geometry.mesh.elements.AbstractElement(varargin{:}) ;
             this.Faces = pkg.geometry.mesh.elements.ElementTable('Types',this,'NodeIdx',1:8) ;
             this.Edges = pkg.geometry.mesh.elements.ElementTable('Types',pkg.geometry.mesh.elements.LagrangeElement('1D',2),'NodeIdx',[1 5 2 ; 2 6 3 ; 3 7 4 ; 4 8 1]) ;
+            this.setIntegration('full') ;
         end
 
         function delete(this)

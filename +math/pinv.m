@@ -15,7 +15,7 @@ if nargin==1 % INPUT : d = PINV(A)
     % Deal with sizes
         SZ = size(A) ; 
         n = SZ(1) ; m = SZ(2) ;
-        SZ(1:2) = 1 ;
+        SZ = [SZ(3:end) 1 1] ;
 else % INPUT : d = INV([n m],A11,A21,A31,...,An1,A12,...,Ann)
     n = varargin{1}(1) ; m = varargin{1}(2) ;
     varargin = varargin(2:end) ;

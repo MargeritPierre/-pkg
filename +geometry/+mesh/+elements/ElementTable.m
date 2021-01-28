@@ -387,6 +387,8 @@ methods
         [~,ie,ia] = unique(sortedIndices,'rows') ;
         if numel(ie)~=numel(ia)
             this.Indices = this.Indices(ie,:) ;
+        else
+            ia = 1:numel(ia) ;
         end
     end
     

@@ -46,7 +46,7 @@ classdef Quadrangle < pkg.geometry.mesh.elements.base.BaseElement
 % INTEGRATION QUADRATURE
     properties
         % Four integration points (full integration)
-        GaussIntegrationPoints = 0.5*[1 1]+(1/2*sqrt(3))*[-1 -1 ; 1 -1 ; 1 1 ; -1 1] % [nGaussIntPts nDims]
+        GaussIntegrationPoints = 0.5*[1 1]+0.5*[-1 -1 ; 1 -1 ; 1 1 ; -1 1]/sqrt(3) % [nGaussIntPts nDims]
         GaussIntegrationWeights = 0.25*[1 ; 1 ; 1 ; 1] % [nGaussIntPts 1]
     end
     

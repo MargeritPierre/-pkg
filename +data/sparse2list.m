@@ -1,24 +1,30 @@
 function list = sparse2list(M)
 %SPARSE2LIST Convert a sparse (incidence) matrix to its connectivity list
-%reprezentation
+%representation
 % M: [nI nJ]
 % list: [nI nMaxJJbyI]
 
+% Find nonzero values
     [ii,jj,vv] = find(M) ;
     nRows = max(ii(:)) ;
     
+% Sort by values (list column ordering)
     [~,ind] = sort(vv,'ascend') ;
     ii = ii(ind) ; jj = jj(ind) ;
     
-    elems = accumarray(ii(:),jj(:),[nRows 1],@(x){x},{0}) ;
-    nEl = cellfun(@numel,elems) ;
+% Sort row indices
+    [ii,ind] = sort(ii,'ascend') ;
+    jj = jj(ind) ;
     
-    list = zeros(max(nEl),nRows) ;
-    list(sub2ind(size(list),nEl(:)',1:nRows)) = 1 ;
-    list = flip(cumsum(flip(list,1),1),1) ;
-    list(logical(list)) = cat(1,elems{:})  ;
+% Number of valid indices by row
+    ni = accumarray(ii(:),1,[nRows 1],[],0) ;
     
-    list = list' ;
+% Column indices
+    cc = pkg.data.colon(ones(1,nRows),ni') ;
+    
+% Build the list
+    list = zeros(nRows,max(ni)) ;
+    list(sub2ind(size(list),ii(:),cc(:))) = jj(:) ;
     
 end
 
