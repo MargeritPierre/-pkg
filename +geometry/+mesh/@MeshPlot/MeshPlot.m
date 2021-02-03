@@ -5,7 +5,6 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
     properties
         Mesh = pkg.geometry.mesh.Mesh.empty
         NodeCoordinates = [] ;
-        CData = [] 
         GraphicGroup = gobjects(0)
         VisibleNodes = 'none' ;
         VisibleEdges = 'outer' ; 
@@ -18,18 +17,21 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         Selected = struct('Nodes',[],'Elems',[],'Faces',[],'Edges',[]) ;
         Highlighted = struct('Nodes',[],'Elems',[],'Faces',[],'Edges',[]) ;
     end
-    properties (Access=protected)
+    properties (Hidden,Access=protected)
         Initialized = false ;
     end
     properties (Dependent)
         % Object
             Parent
             Tag
+        % Mesh Deformation (Nodal Displacements)
+            Deformation 
         % Visibility
             Visible
         % Global Color
             Color
         % Mesh Faces
+            CData % face data
             FaceColor
             FaceAlpha
         % Mesh Edges
@@ -92,8 +94,33 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
             this.NodeCoordinates = coord ;
             this.update ;
         end
-    % Changing the color (not implemented
+    % Mesh deformation (nodal displacements)
+        function u = get.Deformation(this)
+            pad = size(this.NodeCoordinates,2)-this.Mesh.nCoord ;
+            u = this.NodeCoordinates-padarray(this.Mesh.Nodes,[0 pad],0,'post') ;
+        end
+        function set.Deformation(this,u)
+            pad = size(u,2)-this.Mesh.nCoord ;
+            this.NodeCoordinates = padarray(this.Mesh.Nodes,[0 pad],0,'post') + u ;
+        end
+    % Changing the face color
+        function cdata = get.CData(this)
+            cdata = this.Faces.FaceVertexCData ;
+        end
         function set.CData(this,cdata)
+            cdata = full(cdata) ;
+            switch size(cdata,1)
+                case this.Mesh.nNodes % nodal values
+                    this.Faces.FaceColor = 'interp' ;
+                    this.Faces.FaceVertexCData = cdata ;
+                case this.Mesh.nElems % element values
+                    this.Faces.FaceColor = 'flat' ;
+                    this.Faces.FaceVertexCData = cdata ;
+                otherwise % try on gauss points
+                    [ee,~,ie] = this.Mesh.integration ;
+                    if size(cdata,1)~=numel(ie) ; error('Wrong shape for CData') ; end
+                    this.CData = this.Mesh.interpMat(ee,ie)\cdata ;
+            end
         end
     % Feature visibility
         function set.VisibleNodes(this,opt) ; this.VisibleNodes = char(opt) ; update(this) ; end
@@ -625,4 +652,3 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
 
 
 end
-

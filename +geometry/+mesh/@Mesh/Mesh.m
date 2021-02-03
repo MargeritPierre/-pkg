@@ -1029,22 +1029,31 @@ methods
         if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
         mesh.removeNodes(mesh.unusedNodes) ;
     end
+    
+    function [un,dn,T] = duplicatedNodes(this,tol)
+    % Return a transfer matrix for duplicated nodes
+    % un: unique list of nodes, dn: old nodes index in the new node list
+    % T [numel(un) numel(dn)] tranfer matrix
+        if nargin<2 ; tol = this.defaultTolerance ; end
+    % Unique node indices list
+        [~,un,dn] = uniquetol(this.Nodes,tol,'ByRows',true,'DataScale', 1) ;
+    % Take the barycenter for duplicates groups
+        T = sparse(dn,1:numel(dn),1,numel(un),numel(dn)) ;
+        T = T.*(1./sum(T,2)) ;
+    end
 
-    function [mesh,nodesMoved] = cullDuplicates(this,tol)
+    function [mesh,nodesMoved,old2new] = cullDuplicates(this,tol)
     % Cull duplicate nodes in the mesh and corresponding elements
         if nargin<2 ; tol = this.defaultTolerance ; end
         if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
-    % Unique node indices list
-        [~,new,old] = uniquetol(mesh.Nodes,tol,'ByRows',true,'DataScale', 1) ;
-    % Take the barycenter for duplicates groups
-        meanMat = sparse(old,1:numel(old),1,numel(new),numel(old)) ;
-        meanMat = sparse(1:numel(new),1:numel(new),1./sum(meanMat,2))*meanMat ;
+    % Get duplicated nodes
+        [~,old2new,meanMat] = duplicatedNodes(mesh,tol) ;
     % Return moved node if needed
         if nargout>1 ; nodesMoved = mesh.Nodes(any(mod(meanMat,1),1),:) ; end
     % Change the node list
         mesh.Nodes = meanMat*mesh.Nodes ;
     % New element list
-        mesh.Elems = mesh.Elems.changeNodeIdx(old) ;
+        mesh.Elems = mesh.Elems.changeNodeIdx(old2new) ;
     end
 
 end
