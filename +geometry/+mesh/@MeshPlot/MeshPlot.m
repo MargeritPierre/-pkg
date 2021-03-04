@@ -119,7 +119,8 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
                 otherwise % try on gauss points
                     [ee,~,ie] = this.Mesh.integration ;
                     if size(cdata,1)~=numel(ie) ; error('Wrong shape for CData') ; end
-                    this.CData = this.Mesh.interpMat(ee,ie)\cdata ;
+                    this.Faces.FaceColor = 'interp' ;
+                    this.Faces.FaceVertexCData = this.Mesh.interpMat(ee,ie)\cdata ;
             end
         end
     % Feature visibility

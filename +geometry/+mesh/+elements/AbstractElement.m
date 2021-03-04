@@ -137,6 +137,44 @@ methods
                     ,'Indices',[1 1:this.nNodes]) ;
     end
     
+    function in = interiorNodes(this)
+    % Return the logical indices of interior nodes
+        switch this.nDims
+            case 0 % Node
+                in = false ;
+            case 1 % Edge
+                in = logical(mod(this.NodeLocalCoordinates(:),1))' ;
+            case 2 % Face
+                in = ~ismember(1:this.nNodes,this.Edges.NodeIdx(:)) ;
+            case 3 % Volume
+                in = ~ismember(1:this.nNodes,this.Faces.NodeIdx(:)) ;
+            otherwise
+                error('Function is not supported for elements with dimension > 3')
+        end
+    end
+    
+    function nfo = nodeInfo(this)
+    % Return topological informations about the element nodes
+        nfo = [] ;
+    % Interior nodes
+        nfo.InteriorNodes = this.interiorNodes ;
+    % Vertices of the element
+        switch this.nDims
+            case 0 % vertice element
+                nfo.VerticeNodes = true ;
+            case 1 % edge ends
+                nfo.VerticeNodes = ~nfo.InteriorNodes ;
+            otherwise % nodes belonging to more than one edge
+                nfo.VerticeNodes = accumarray(this.Edges.NodeIdx(:),1,[this.nNodes 1])'>1 ;
+        end
+    % Edge Nodes
+        nfo.EdgeNodes = ismember(1:this.nNodes,this.Edges.NodeIdx(:)) ;
+        nfo.EdgeInteriorNodes = nfo.EdgeNodes & ~nfo.VerticeNodes ;
+    % Face Nodes
+        nfo.FaceNodes = ismember(1:this.nNodes,this.Faces.NodeIdx(:)) ;
+        nfo.FaceInteriorNodes = nfo.FaceNodes & ~nfo.EdgeNodes ;
+    end
+    
     function m = mesh(this,X)
     % Return a mesh corresponding to the element
         if nargin<2 ; X = this.NodeLocalCoordinates ; end

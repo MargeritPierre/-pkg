@@ -116,6 +116,10 @@ methods
     % Split the mesh at given edge indices
         if islogical(edg) ; edg = find(edg) ; end
         edg = unique(edg(:)) ;
+    % Backup elements & nodes
+        elems = this.Elems ;
+        x = this.Nodes ;
+    % Edge end nodes: special care is needed (because they are shared with other edges)
     % Corresponding end nodes
         nodeIdx = this.Edges.NodeIdx(edg,:) ;
         nodeIdx = [nodeIdx(:,1) nodeIdx(sub2ind(size(nodeIdx),(1:size(nodeIdx,1))',sum(nodeIdx>0,2)))] ;
@@ -124,16 +128,16 @@ methods
         edg2nod = this.edge2node ;
         elm2edg = this.elem2edge ;
     % Browse over the nodes...
-        elems = this.Elems ;
-        x = this.Nodes ;
         for nn = 1:numel(nodes)
         % Edges linked to the node
             nodEdg = find(edg2nod(nodes(nn),:)) ;
         % End edges: do not share elements with the edges to split
             endEdg = sum(elm2edg(nodEdg,:)*elm2edg(edg,:)',2)==0 ;
-        % Remove end edges
+        % Normal edges: edges normal to the edges to split
+        % non-end edges not part of the edges to split
             normalEdg = nodEdg(~endEdg) ;
             normalEdg = setdiff(normalEdg,edg) ;
+            if isempty(normalEdg) ; continue ; end
         % Create a new node for each normal edge
             newNodes = [nodes(nn) size(x,1)+(1:numel(normalEdg)-1)] ;
             x(newNodes,:) = repmat(x(nodes(nn),:),[numel(normalEdg) 1]) ;
@@ -144,10 +148,14 @@ methods
                 elems.NodeIdx(idx) = newNodes(ee) ;
             end
         end
+    % Backup edge interior nodes
+        intNodes = setdiff(this.Edges.NodeIdx(edg,:),[nodes(:);0]) ;
     % Assign the mesh
-        if nargout==0 ; this.Nodes = x ; this.Elems = elems ; 
+        if nargout==0 ; mesh = this ; mesh.Nodes = x ; mesh.Elems = elems ; 
         else ; mesh = pkg.geometry.mesh.Mesh('Nodes',x,'Elems',elems) ; 
         end
+    % Split the edge interior nodes
+        mesh.splitNodes(unique(intNodes(:))) ;
     end
 end
 
@@ -338,6 +346,31 @@ methods
         sz = accumarray(ie(:),sz(:),[features.nElems 1]) ;
     end
     
+    function [idx,dist2] = near(this,location,features,tol)
+    % Return mesh features that are near a "location"
+    % idx is a boolen vector of size [nFeatures 1]
+    % location can either be 
+    %   - a point with eventually NaN coordinates that wont be taken
+    %   into account in the distance
+    %   - a function handle @(p)fcn(p) which is a "distance" function
+    % features is soptional: node indices are returned by default
+        if nargin<3 ; features = [] ; end
+        if nargin<4 ; tol = this.defaultTolerance ; end
+    % Evaluate te distance function at nodes
+        if isnumeric(location)
+            dims = ~isnan(location) & 1:numel(location)<=this.nCoord ;
+            d = this.Nodes(:,dims)-location(dims) ;
+        elseif isa(location,'function_handle')
+            d = location(this.Nodes) ;
+        end
+        dist2 = sum(abs(d).^2,2) ;
+    % "Integrate" on mesh features if needed
+        if ~isempty(features)
+            dist2 = sum(features.dataAtIndices(dist2),2) ; 
+        end
+    % Get indices
+        idx = dist2<=tol^2 ;
+    end
 end
 
 
@@ -402,7 +435,7 @@ methods
             ii = find(in) ;
             pp = ip(ii) ; ee = ie(ii) ;
         else % test all points vs all elements...
-            elmtBBox = [min(Xe,[],2) max(Xe,[],2)] ; % [nElems 2 nCoord]
+            elmtBBox = [min(Xe,[],2)-tol max(Xe,[],2)+tol] ; % [nElems 2 nCoord]
             [pp,ee] = pkg.data.inDomain(P,elmtBBox) ; 
         end
     end
@@ -706,7 +739,7 @@ methods
         if nargin<3 ; X = this.Nodes ; end
         [E,ie] = features.getListOf('GaussIntegrationPoints') ;
         [W,ii] = features.getListOf('GaussIntegrationWeights') ;
-        if ~isequal(ie,ii) ; error('Integration poits and weights mismatch.') ; end
+        if ~isequal(ie,ii) ; error('Integration points and weights mismatch.') ; end
         J = detJacobian(this,E,ie,features,false,X) ;
         W = J.*W ;
     end

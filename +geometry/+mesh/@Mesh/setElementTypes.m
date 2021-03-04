@@ -1,4 +1,4 @@
-function this = setElementTypes(this,types)
+function mesh = setElementTypes(this,types)
 % Change the types of elements
 % Return a copy of the mesh if an output is queried (the original mesh will
 % remain unchanged)
@@ -21,6 +21,18 @@ function this = setElementTypes(this,types)
     for ee = 1:nElmtTypes
         iMat{ee} = oldElmtTypes(ee).evalAt(newElmtTypes(ee).NodeLocalCoordinates) ;
     end
+    
+% Interpolation of nodes in a hierarchichal manner in order to preserve mesh connectivity:
+% 1) 3D element interior nodes
+% 2) face interior nodes
+% 3) edge interior nodes
+% 4) edge ends
+%     elemInt = {} ; faceInt = {} ; edgeInt = {} ; cornerNodes = {} ;
+%     for ee = 1:nElmtTypes
+%         E = newElmtTypes(ee).NodeLocalCoordinates ;
+%         nfo = newElmtTypes(ee).nodeInfo ;
+%         elemInt{ee} = newElmtTypes(ee).NodeLocalCoordinates ;
+%     end
     
 % New list of nodes coordinates and indices
     Xe = this.Elems.dataAtIndices(this.Nodes) ; % [nElems nMaxNodesByElem nCoord] ;
@@ -49,40 +61,30 @@ function this = setElementTypes(this,types)
     mesh.Elems = pkg.geometry.mesh.elements.ElementTable('Types',newElmtTypes,'Indices',[this.Elems.TypeIdx NodeIdx]) ;
 
 % Cull duplicated nodes without changing the element-element connectivity
-    % Get nodes that are duplicated in the new mesh
-        [X,un,nn] = uniquetol(mesh.Nodes,mesh.defaultTolerance,'ByRows',true,'DataScale',1) ;
-    % welding Matrix
-        W = sparse(nn,1:numel(nn),1,numel(un),numel(nn)) ;
+% Get nodes that are duplicated in the new mesh
+% /!\This step weld splitted edges and faces!
+    [mesh.Nodes,~,nn] = uniquetol(mesh.Nodes,mesh.defaultTolerance,'ByRows',true,'DataScale',1) ;
+    mesh.Elems.NodeIdx = reshape(nn(NodeIdx),this.nElems,[]) ;
+% Split edges that were splitted before
+    if mesh.nEdges~=this.nEdges
+    % Compute elem-edge-elem connectivities 
+        old_el2edg = this.elem2edge ;
+        new_el2edg = mesh.elem2edge ;
+        old_el2el = logical(old_el2edg'*old_el2edg)-speye(this.nElems) ;
+        new_el2el = logical(new_el2edg'*new_el2edg)-speye(mesh.nElems) ;
     % Find the element-element connectivity changes
-        old_el2no = this.elem2node ;
-        new_el2no = W*mesh.elem2node ;
-        old_el2el = logical(old_el2no'*old_el2no)-speye(this.nElems) ;
-        new_el2el = logical(new_el2no'*new_el2no)-speye(mesh.nElems) ;
         [el1,el2] = find(logical(old_el2el-new_el2el)) ;
     % Get associated elements couples
         el = [el1(:) el2(:)] ;
         el = el(el(:,1)~=el(:,2),:) ;
         el = unique(sort(el,2),'rows') ;
-    
-% % Restablish special connectivities
-%     % Find the welded nodes
-%         [welded,~] = find(el2no(:,el(:,1)) & el2no(:,el(:,2))) ;
-%     % Split the welded nodes
-%         mesh.splitNodes(unique(welded)) ;
+    % Get edges that need to be splitted
+        sharedEdges = new_el2edg(:,el(:,1)) & new_el2edg(:,el(:,2)) ;
+    % Split Edges
+        [toSplit,~] = find(sharedEdges) ;
+        mesh.splitEdges(unique(toSplit(:))) ;
+    end
         
-    X = W.*(1./sum(W,2))*X ;
-    NodeIdx = reshape(nn(NodeIdx),this.nElems,[]) ;
-
-% % Cull duplicated nodes
-% % /!\ this is welding mesh features that were splitted !
-%     [X,~,nn] = uniquetol(X,this.defaultTolerance,'ByRows',true,'DataScale',1) ;
-%     NodeIdx = reshape(nn(NodeIdx),this.nElems,[]) ;
-    
-% % Create the new mesh
-%     mesh = copy(this) ;
-%     mesh.Nodes = X ;
-%     mesh.Elems = pkg.geometry.mesh.elements.ElementTable('Types',newElmtTypes,'Indices',[this.Elems.TypeIdx NodeIdx]) ;
-
 % Replace this ?
     if nargout==0 
         this.Nodes = mesh.Nodes ;

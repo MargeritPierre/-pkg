@@ -1,4 +1,4 @@
-classdef TableObject < handle
+classdef TableObject < matlab.mixin.Copyable
 %TABLEOBJECT Interface for an object containing a table of elements
 % Used in pkg.geometry.mesh.Mesh, pkg.geometry.mesh.FunctionSpace, etc.
     
@@ -160,10 +160,15 @@ methods
 % END FEATURES
     function [no,el,ed,fa] = endFeatures(this)
     % Return end features
-        e2n = this.elem2node ;
-        no = sum(e2n,2)<=1 ;
-        if nargout>=2 ; el = logical(e2n'*no) ; end
-        if nargout>=3 ; ed = logical(this.edge2node'*no) ; end
+        el2no = this.elem2node ;
+        ed2no = this.edge2node ;
+    % End nodes
+        no = (sum(el2no,2)==0) ... belongs to no element
+             | (sum(el2no,2)==1 & sum(ed2no,2)>0) ... belong to an edge of ONE element
+             ;
+     % Other features
+        if nargout>=2 ; el = logical(el2no'*no) ; end
+        if nargout>=3 ; ed = logical(ed2no'*no) ; end
         if nargout>=4 ; fa = logical(this.face2edge'*ed) ; end
     end
     

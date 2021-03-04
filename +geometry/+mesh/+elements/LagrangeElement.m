@@ -17,6 +17,7 @@ classdef LagrangeElement < pkg.geometry.mesh.elements.AbstractElement
         % Creation arguments
         Geometry
         Order
+        Type
         % Node local Coordinates [nNodes nDims]
         NodeLocalCoordinates
         % The list of faces [nFaces nMaxNodesByFace]
@@ -42,12 +43,6 @@ classdef LagrangeElement < pkg.geometry.mesh.elements.AbstractElement
     methods
         % Number of polynoms in the basis
         function N = nPolys(this) ; N = size(this.PolyExp,1) ; end
-    end
-    
-%% INTEGRATION QUADRATURE
-    properties
-        GaussIntegrationPoints % [nGaussIntPts nDims]
-        GaussIntegrationWeights % [nGaussIntPts 1]
     end
     
 %% CONSTRUCTOR / DESTRUCTOR
@@ -98,6 +93,7 @@ classdef LagrangeElement < pkg.geometry.mesh.elements.AbstractElement
         function createTensorProdElement(this,NDIMS,ORDER)
         % Set the element properties corresponding to a tensor product element 
         % Used for geometries 1D, quad, hex, ...
+            this.Type = 'tensorprod' ;
         % CONSTRUCT THE BASE POLYNOMS
             if ORDER==0 % ZERO-order elements
                 this.PolyExp = zeros(1,NDIMS) ;
@@ -145,14 +141,14 @@ classdef LagrangeElement < pkg.geometry.mesh.elements.AbstractElement
             % Assign
                 if this.nDims>1 ; this.Faces = pkg.geometry.mesh.elements.ElementTable('Types',faceElemType,'NodeIdx',faceNodIdx) ; end
                 this.Edges = pkg.geometry.mesh.elements.ElementTable('Types',edgeElemType,'NodeIdx',edgeNodIdx) ;
-        % GAUSS QUADRATURE POINTS (<TODO> find true Gauss points) 
-            this.GaussIntegrationPoints = 0.25*[1 1 ; 3 1 ; 3 3 ; 1 3] ;
-            this.GaussIntegrationWeights = ones(size(this.GaussIntegrationPoints,1),1)/size(this.GaussIntegrationPoints,1) ;
+        % GAUSS QUADRATURE POINTS
+            this.setGaussIntegration() ;
         end
         
         function createSimplexElement(this,NDIMS,ORDER)
         % Set the element properties corresponding to a simplex element 
         % Used for geometries tri, tet, ...
+            this.Type = 'simplex' ;
         % CONSTRUCT THE BASE POLYNOMS
             if ORDER==0 % ZERO-order elements
                 this.PolyExp = zeros(1,NDIMS) ;
@@ -201,9 +197,8 @@ classdef LagrangeElement < pkg.geometry.mesh.elements.AbstractElement
             % Assign
                 this.Faces = pkg.geometry.mesh.elements.ElementTable('Types',faceElemType,'NodeIdx',faceNodIdx) ;
                 this.Edges = pkg.geometry.mesh.elements.ElementTable('Types',edgeElemType,'NodeIdx',edgeNodIdx) ;
-        % GAUSS QUADRATURE POINTS (<TODO> find true Gauss points) 
-            this.GaussIntegrationPoints = this.centroid ;
-            this.GaussIntegrationWeights = (1/factorial(this.nDims))*ones(size(this.GaussIntegrationPoints,1),1)/size(this.GaussIntegrationPoints,1) ;
+        % GAUSS QUADRATURE POINTS
+            this.setGaussIntegration() ;
         end
     end
     
@@ -236,7 +231,7 @@ classdef LagrangeElement < pkg.geometry.mesh.elements.AbstractElement
         function P = evalPolynomsAt(this,E,DERIV)
         % Evaluate base polynoms P at given local coordinates E
         % An optional derivation argument DERIV = [d1 d2 ...] [1 nDims] can
-        % be gicven to evaluate polynom derivatives
+        % be given to evaluate polynom derivatives
         % E: [nRows nDims]
         % P: [nRows nPolys]
             if nargin<3 ; DERIV = zeros(1,this.nDims) ; end
@@ -256,6 +251,86 @@ classdef LagrangeElement < pkg.geometry.mesh.elements.AbstractElement
                 % Compute
                     P = prod(A.*(E.^Nm),3) ; % [nRows nPolys]
             end
+        end
+    end
+    
+    
+%% INTEGRATION QUADRATURE
+    properties
+        GaussIntegrationPoints % [nGaussIntPts nDims]
+        GaussIntegrationWeights % [nGaussIntPts 1]
+    end
+    methods
+        function setGaussIntegration(this,order)
+        % Compute the integration scheme
+        % see www.code-aster.org › doc › man_r › r3.01.01.pdf
+            if nargin<2 ; order = this.Order+1 ; end
+            switch this.Type
+                case 'tensorprod'
+                % 1D Case
+                    switch order
+                        case 0 ; this.setGaussIntegration(1) ; return ; 
+                        case 1 ; GP = 1/2 ; W = 1 ;
+                        case 2
+                            a = 1/sqrt(3) ;
+                            GP = ([-a;a]+1)/2 ;
+                            W = [1;1]/2 ;
+                        case 3
+                            a = sqrt(3/5) ;
+                            GP = ([-a;0;a]+1)/2 ;
+                            W = [5;8;5]/18 ;
+                        otherwise
+                            warning('Element integration scheme limited to order 3.') ;
+                            this.setGaussIntegration(3) ;
+                            return ; 
+                    end
+                % Multidim grid
+                    for dd = 2:this.nDims
+                        GP = [repmat(GP,order,1) repelem(GP(:,end),order,1)] ;
+                        W = repmat(W(:),order,1).*repelem(W(:),order,1) ;
+                    end
+                case 'simplex'
+                    switch order
+                        case 0 ; this.setGaussIntegration(1) ; return ; 
+                        case 1
+                            GP = this.centroid ;
+                            W = (1/factorial(this.nDims)) ;
+                        case 2
+                            switch this.nDims
+                                case 2 % FPG3
+                                    GP = [1 1 ; 4 1 ; 1 4]/6 ;
+                                    W = [1;1;1]/6 ;
+                                case 3 % FPG4
+                                    a = (5-sqrt(5))/30 ;
+                                    b = (5+3*sqrt(5))/20 ;
+                                    GP = [a a a ; a a b ; a b a ; b a a] ;
+                                    W = [1;1;1;1]/24 ;
+                            end
+                        case 3
+                            switch this.nDims
+                                case 2 % FPG6
+                                    a  = 0.445948490915965 ; 
+                                    b  = 0.091576213509771 ;
+                                    GP = [b b ; 1-2*b b ; b 1-2*b ; a 1-2*a ; a a ; 1-2*a a] ;
+                                    P1 = 0.11169079483905 ;
+                                    P2 = 0.0549758718227661 ; 
+                                    W = [P2;P2;P2;P1;P1;P1] ;
+                                case 3 % FPG5
+                                    a = 0.25 ;
+                                    b = 1/6 ;
+                                    c = 0.5 ;
+                                    GP = [a a a ; b b b ; b b c ; b c b ; c b b] ;
+                                    W = [-2/15;[1;1;1;1]*3/40] ;
+                            end
+                        otherwise
+                            warning('Element integration scheme limited to order 3.') ;
+                            this.setGaussIntegration(1) ;
+                            return ; 
+                    end
+            end
+        % Set
+            this.GaussIntegrationPoints = GP ;
+            this.GaussIntegrationWeights = W ;
         end
     end
 
