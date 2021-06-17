@@ -699,9 +699,8 @@ methods
     
     function [M,jj] = jumpMat(this,featJ,featF)
     % Return a sparse matrix so that j = M*f is the jump of f
-    % f is defined on featF
-    % j is measured on featJ
-    % featJ & featF are char ('Nodes','Edges','Faces','Elems')
+    % f is defined on featF ('Edges','Faces','Elems')
+    % j is measured on featJ ('Nodes','Edges','Faces')
         if nargin<2 % default jump features
             featJ = 'Nodes' ;
             if this.isSurface ; featJ = 'Edges' ; end
@@ -715,20 +714,16 @@ methods
             end
         end
     % Retrieve feature tables
-        nodeTable = pkg.geometry.mesh.elements.ElementTable(...
-                    'Types',pkg.geometry.mesh.elements.base.Point ...
-                    ,'NodeIdx',(1:this.nNodes)' ...
-                ) ;
-        if strcmp(featJ,'Nodes') ; featJ = nodeTable ; else ; featJ = this.(featJ) ; end
-        if strcmp(featF,'Nodes') ; featF = nodeTable ; else ; featF = this.(featF) ; end
+        featJ = this.(featJ) ;
+        featF = this.(featF) ;
     % Connectivity matrix
-        f2j = featF.shares(featJ) ; % which Fcn feat is linked to which jump feature ?
+        f2j = featF.contains(featJ) ; % which Fcn feat is linked to which jump feature ?
         f2f = f2j'*diag(sparse(1:featJ.nElems))*f2j ; % connectivity with jump feature as value
         f2f = tril(f2f,-1) ; % remove symmetrical connectivity & self-connectivity
     % Connectivity indices
         [f1,f2,jj] = find(f2f) ;
     % Jump matrix
-        M = pkg.data.list2sparse([f1 f2],repmat([1 -1],numel(jj),1))' ;
+        M = pkg.data.list2sparse(
     end
     
     function J = detJacobian(this,P,ie,features,extrap,X,tol)

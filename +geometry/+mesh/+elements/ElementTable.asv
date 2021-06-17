@@ -259,8 +259,7 @@ methods
     function M = shares(this,features)
     % Return a sparse matrix of logical values
     % M(i,j) = true if this(j,:) contains features(i,:) 
-    %               or if features(i,:) contains this(j,:)
-        M = this.contains(features) | features.contains(this)' ;
+    %               or if this(j,:) contains features(i,:) 
     end
     
     function [table,elem2feat] = getTableOfUnique(this,features)

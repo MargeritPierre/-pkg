@@ -5,7 +5,7 @@ methods
     function this = Point(pos)
     % Class construtor
         this = this@pkg.geometry.levelset.LevelSet() ;
-        this.Function = @(p)this.dpoint(p,pos) ;
+        this.Function = @(p)pkg.geometry.distance.toPoint(p,pos) ;
         this.BoundingBox = [] ;
         this.Kinks = pos ;
         this.EdgeFcns{1} = @(t)repmat(pos,size(t(:))) ;

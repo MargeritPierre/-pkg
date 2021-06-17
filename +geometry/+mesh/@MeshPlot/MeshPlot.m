@@ -102,6 +102,7 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         function set.Deformation(this,u)
             pad = size(u,2)-this.Mesh.nCoord ;
             this.NodeCoordinates = padarray(this.Mesh.Nodes,[0 pad],0,'post') + u ;
+            if isempty(this.CData) ; this.CData = sqrt(sum(u.^2,2)) ; end
         end
     % Changing the face color
         function cdata = get.CData(this)
@@ -293,6 +294,8 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
                         faces = faces.simplex ; % to display complicated elements
                     end
                     this.setPatch(this.Faces,vertices,faces.indicesWithNaNs) ;
+                else
+                    visibleFaces = false(this.Mesh.nFaces,1) ;
                 end
             % Edges
                 switch this.VisibleEdges

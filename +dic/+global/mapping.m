@@ -1,4 +1,4 @@
-function [N,INSIDE] = globalMapping(img,mesh,edgeMargin,tol) 
+function [N,INSIDE] = mapping(img,mesh,edgeMargin,tol) 
 % Global mapping of a mesh in a function
 % inputs:
 %   - img is a 2D image
