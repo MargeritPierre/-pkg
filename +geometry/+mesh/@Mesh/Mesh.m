@@ -617,7 +617,7 @@ methods
         end
     end
     
-    function M = gradMat(this,P_or_E,ie,features,extrap,X,tol)
+    function M = diffMat(this,P_or_E,ie,features,extrap,X,tol)
     % Return sparse matrices M so that df(P)/dx_i = M{i}(P)*f_n
         if nargin<3 ; ie = [] ; end
         if nargin<4 ; features = this.Elems ; end
