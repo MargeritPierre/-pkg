@@ -599,7 +599,7 @@ methods
     % Return a sparse interpolation matrix so that f(P) = M*f_n
         if nargin<2 ; P_or_E = this.centroid ; end
         if nargin<3 ; ie = [] ; end
-        if nargin<4 ; features = this.Elems ; end
+        if nargin<4 || ~numel(features) ; features = this.Elems ; end
         if nargin<5 ; extrap = nargin<3 ; end
         if nargin<6 ; X = this.Nodes ; end
         if nargin<7 ; tol = this.defaultTolerance(X) ; end
@@ -778,16 +778,58 @@ methods
     
     function [E,W,ie] = integration(this,features,X)
     % Return everything needed for integration
-    % E: element local coordinates of gauss points
+    % E: feature local coordinates of gauss points
     % W: associated quadrature weights
-    % ie: element indices
+    % ie: feature indices
+    % toElems: translate to elements
         if nargin<2 ; features = this.Elems ; end
         if nargin<3 ; X = this.Nodes ; end
+        if nargin<4 ; toElems = false ; end
+    % Quadrature points & weights
         [E,ie] = features.getListOf('GaussIntegrationPoints') ;
         [W,ii] = features.getListOf('GaussIntegrationWeights') ;
         if ~isequal(ie,ii) ; error('Integration points and weights mismatch.') ; end
-        J = detJacobian(this,E,ie,features,false,X) ;
-        W = J.*W ;
+    % With the transformation jacobian
+        W = W.*detJacobian(this,E,ie,features,false,X) ;
+    end
+    
+    function [E,W,ie,Ef,ff] = elemIntegration(this,features,X)
+    % Integrate a function on elements using quadrature from other features
+    % E: element local coordinates of feature gauss points
+    % W: associated quadrature weights
+    % ie: element indices
+    % Ef: feature local coordinates
+    % ff: feature indices
+    % toElems: translate to elements
+        if nargin<2 ; features = this.Elems ; end
+        if nargin<3 ; X = this.Nodes ; end
+    % Get integration on features
+        [Ef,W,ff] = integration(this,features,X) ;
+    % Project on elements
+        [E,ie,iff] = this.Elems.sharedCoordinates(features,Ef,ff) ;
+        Ef = Ef(iff,:) ;
+        ff = ff(iff) ;
+    end
+    
+    function [Eb,Wb,ib,Nb] = boundaryIntegration(this,X)
+    % Return everything needed for integration on boundary edges/outer faces
+    % Eb: element local coordinates of edge/face gauss points
+    % Wb: associated quadrature weights
+    % ib: element indices
+    % Nb: outgoing normals at integration points
+        if nargin<2 ; X = this.Nodes ; end
+        if this.isSurface % boundary->edges
+            features = this.Edges.subpart(this.boundaryEdges) ;
+        elseif this.isVolume % boundary->faces
+            features = this.Faces.subpart(this.outerFaces) ;
+        else
+            error('Unknown boundary') ;
+        end
+        [Eb,Wb,ib,Ef,ff] = this.elemIntegration(features,X) ;
+        if nargout>=4
+            Nb = this.getNormals(features.subpart(ff),Ef) ;
+            Nb = Nb(:,1:this.nCoord) ;
+        end
     end
     
 end
@@ -963,11 +1005,7 @@ methods
         if nargin<3 ; tol = this.defaultTolerance ; end
         if nargin<4 ; X = this.Nodes ; end
     % Evaluate the levelset on nodes
-        if ~isnumeric(fcn)
-            fcnX = fcn(X) ;
-        else
-            fcnX = fcn ;
-        end
+        if ~isnumeric(fcn) ; fcnX = fcn(X) ; else fcnX = fcn ; end
     % Get which elements are crossing the level set
         [fBool,eBool] = featureLevelSetSign(this,fcnX,this.Elems,tol,X) ;
         indElemsOnLvlSt = find(fBool==0) ;

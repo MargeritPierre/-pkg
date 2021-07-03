@@ -149,7 +149,7 @@ delete(findobj(gcf,'type','hggroup')) ;
     W = spdiags(W.*mesh.detJacobian(E,ie),0,nGP,nGP) ;
     
 % Gradient matrix, df_dxi = G{i}*fn
-    G = mesh.gradMat(E,ie) ;
+    G = mesh.diffMat(E,ie) ;
 % Strain matrix, eps = B*u
     O = sparse(nGP,mesh.nNodes) ;
     B = [G{1} O ; O G{2} ; G{2} G{1}] ;

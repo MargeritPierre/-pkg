@@ -120,7 +120,7 @@ import pkg.geometry.levelset.*
     V0 = sum(w) ; % mesh volume
     nGP = numel(w) ;
     N = mesh.interpMat(ee,ie) ;
-    G = mesh.gradMat(ee,ie) ;
+    G = mesh.diffMat(ee,ie) ;
     O = sparse(nGP,mesh.nNodes) ;
 % Strain matrix [E11;E22;2E12] = B*u(:)
     B = [G{1} O ; O G{2} ; G{2} G{1}] ; 

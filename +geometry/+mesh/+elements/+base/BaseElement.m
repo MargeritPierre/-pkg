@@ -38,9 +38,9 @@ methods
         node = Node ; bar = Bar ; tri = Triangle ; tet = Tetrahedron ;
     % By default, this will return all test possibilities... 
     % Create all possible combinations (more than 6000 tests for an hexahedron...)
-        nodeTests = pkg.math.combinations(repmat({[-1,1]},[this.nNodes 1])) ;
+        nodeTests = pkg.math.combinations(repmat({[-1,0,1]},[this.nNodes 1])) ;
     % Corresponding crossing edges
-    % an edge cross if the sign of the lvlset is opposite on the two ends
+    % an edge crosses if the sign of the lvlset is opposite on the two ends
         crossEdg = this.Edges.dataAtIndices(nodeTests') ;
         crossEdg = reshape(range(crossEdg,2)==2,this.nEdges,size(nodeTests,1)).' ;
         tests = [nodeTests crossEdg] ;

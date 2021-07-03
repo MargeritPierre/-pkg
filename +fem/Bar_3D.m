@@ -41,7 +41,7 @@ ie = iep ;
 J = mesh.detJacobian(E,ie) ;
 
 % Gradient matrix
-G = mesh.gradMat(E,ie) ;
+G = mesh.diffMat(E,ie) ;
 
 % Strain computation
 O = sparse(numel(ie),mesh.nNodes) ;

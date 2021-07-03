@@ -312,10 +312,14 @@ end
 
 %% DATA PROJECTION ON INDICES
 methods
-    function indices = indicesWithNaNs(this)
+    function idx = indicesWithNaNs(this,ie)
     % Return node indices with NaNs in place of zero's
-        indices = double(this.NodeIdx) ;
-        indices(indices<=0) = NaN ;
+    % ie can bd used to return some element indices
+        if nargin<2 ; idx = this.NodeIdx ;
+        else ; idx = this.NodeIdx(ie,:) ; 
+        end
+        idx = double(idx) ;
+        idx(idx<=0) = NaN ;
     end
     
     function VAL = dataAtIndices(this,DATA)
@@ -421,6 +425,46 @@ methods
     % numel(newNodeIdx)>=max(this.NodeIdx(:))
         table = this ;
         table.Indices = [this.TypeIdx this.dataAtIndices(newNodeIdx)] ;
+    end
+    
+    function [elA,nodA,elB,nodB] = sharedIndices(A,B)
+    % Return shared nodes between two tables
+        [indThis,indTable] = find(pkg.data.findIn(A.indicesWithNaNs,B.NodeIdx(:))) ;
+        [elA,nodA] = ind2sub(size(A.NodeIdx),indThis) ;
+        [elB,nodB] = ind2sub(size(B.NodeIdx),indTable) ;
+    end
+    
+    function [Ea,ia,iib] = sharedCoordinates(A,B,Eb,ib)
+    % Return local coordinates corresponding to coordinates in an other element table
+    % example: Ea = elem.shared(edge,Eb) returns the local coordinate in elem corresponding to a local coordinate in edge
+        if nargin<3 ; [Eb,ib] = B.getListOf('NodeLocalCoordinates') ; end
+        if nargin<4 && size(Eb,1)==1 ; Eb = repmat(Eb,[B.nElems 1]) ; end
+        if nargin==3 ; ib = (1:size(Eb,1))' ; end
+    % Which elements are shared ?
+        [bb,aa] = find(A.shares(B)) ;
+    % Full list of shared element indices
+        [ibb,iib] = pkg.data.findIn(bb,ib) ;
+        ib = ib(iib) ; % ib(iib) = bb(ibb)
+        ia = aa(ibb) ; % A(ia) shares B(ib)
+        Eb = Eb(iib,:) ;
+    % Shared Nodes indices
+        Sn = permute(A.indicesWithNaNs(ia),[3 2 1])==permute(B.indicesWithNaNs(ib),[2 3 1]) ; % [B.nMaxNodesByElem A.nMaxNodesByElem numel(ia)] ;
+    % Shape functions of B at queried coordinates
+        Nb = zeros(numel(ia),B.nMaxNodesByElem) ;
+        for tt = 1:B.nTypes
+            elB = B.Types(tt) ;
+            isType = B.TypeIdx(ib)==tt ;
+            Nb(isType,1:elB.nNodes) = elB.evalAt(Eb(isType,1:elB.nDims)) ;
+        end
+    % Node Coordinates of A
+        Xa = pkg.data.padcat(3,A.Types.NodeLocalCoordinates,'filler',0) ;
+        Xa = Xa(:,:,A.TypeIdx(ia)) ; % [A.nMaxNodesByElems A.nMaxDims numel(ia)]
+    % Coordinates of nodes of B in A
+        En = sum(permute(Sn,[3 1 4 2]).*permute(Xa,[3 4 2 1]),4) ; % [numel(ia) B.nMaxNodesNyElems A.nMaxDims]
+    % Coordinates of queried points at B in A
+        Ea = permute(sum(Nb.*En,2),[1 3 2]) ; % [numel(ia) A.nMaxDims] ;
+    % Return indices in B if needed
+        if nargin<4 ; iib = ib ; end
     end
 end
 

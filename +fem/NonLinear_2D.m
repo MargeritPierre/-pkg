@@ -76,7 +76,7 @@ set(gca,'projection','orthographic')
         
         % Gradient matrix
         % dui_dxj = G{j}*u(:,i)
-        G = mesh.gradMat(E,ie) ;
+        G = mesh.diffMat(E,ie) ;
 
         % Strain computation
         % E11=du1_dx1 ; E22=du2_dx2 ; 2E12=du2_dx1+du1_dx2
@@ -194,7 +194,7 @@ set(gca,'projection','orthographic')
 %         t = tic ;
 %         
 %         % Gradient matrix
-%         G = mesh.gradMat(E,ie) ;
+%         G = mesh.diffMat(E,ie) ;
 % 
 %         % Strain computation
 %         O = sparse(numel(ie),mesh.nNodes) ;

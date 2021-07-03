@@ -71,7 +71,7 @@ set(gca,'projection','orthographic')
         t = tic ;
         
         % Gradient matrix
-        G = mesh.gradMat(E,ie) ;
+        G = mesh.diffMat(E,ie) ;
 
         % Strain computation
         O = sparse(numel(ie),mesh.nNodes) ;
@@ -182,7 +182,7 @@ set(gca,'projection','orthographic')
         t = tic ;
         
         % Gradient matrix
-        G = mesh.gradMat(E,ie) ;
+        G = mesh.diffMat(E,ie) ;
 
         % Strain computation
         O = sparse(numel(ie),mesh.nNodes) ;

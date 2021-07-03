@@ -43,8 +43,8 @@ classdef Triangle < pkg.geometry.mesh.elements.base.BaseElement
     
 % INTEGRATION QUADRATURE
     properties
-        GaussIntegrationPoints = [1/3 1/3] % [nGaussIntPts nDims]
-        GaussIntegrationWeights = 1/2 % [nGaussIntPts 1]
+        GaussIntegrationPoints = [1 1 ; 4 1 ; 1 4]/6 ; % [1/3 1/3] % [nGaussIntPts nDims]
+        GaussIntegrationWeights = [1 ; 1 ; 1]/6 ; % 1/2 % [nGaussIntPts 1]
     end
     
 %% CONSTRUCTOR / DESTRUCTOR

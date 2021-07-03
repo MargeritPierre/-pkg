@@ -35,7 +35,7 @@
 % Problem matrices
     [E,w,ie] = mesh_1D.integration ; W = spdiags(w(:),0,numel(w),numel(w)) ;
     N = mesh_1D.interpMat(E,ie) ;
-    G = mesh_1D.gradMat(E,ie) ; G = G{1} ;
+    G = mesh_1D.diffMat(E,ie) ; G = G{1} ;
 % Assemble
     K = S*lmbda*G'*W*G ; K = 0.5*(K+K') ;
     M = S*Cp*rho*N'*W*N ; M = 0.5*(M+M') ;
@@ -101,7 +101,7 @@
 % Problem matrices
     [E,w,ie] = mesh_2D.integration ; W = spdiags(w(:),0,numel(w),numel(w)) ;
     N = mesh_2D.interpMat(E,ie) ;
-    G = mesh_2D.gradMat(E,ie) ; Gy = G{2} ; Gt = G{1} ;
+    G = mesh_2D.diffMat(E,ie) ; Gy = G{2} ; Gt = G{1} ;
 % Assemble (DO NOT SYMMETRIZE)
     K = S*lmbda*Gy'*W*Gy + S*Cp*rho*N'*W*Gt ;
 % Second-hand term
@@ -185,7 +185,7 @@
 % Problem matrices
     [E,w,ie] = mesh_2D.integration ; W = spdiags(w(:),0,numel(w),numel(w)) ;
     N = mesh_2D.interpMat(E,ie) ;
-    G = mesh_2D.gradMat(E,ie) ; Gy = G{2} ; Gt = G{1} ;
+    G = mesh_2D.diffMat(E,ie) ; Gy = G{2} ; Gt = G{1} ;
 % Assemble (DO NOT SYMMETRIZE)
     K = S*lmbda*Gy'*W*Gy + S*Cp*rho*N'*W*Gt ;
 % Second-hand term

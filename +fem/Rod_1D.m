@@ -36,7 +36,7 @@ ie = iep ;
 J = mesh.detJacobian(E,ie) ;
 
 % Gradient matrix
-G = mesh.gradMat(E,ie) ;
+G = mesh.diffMat(E,ie) ;
 
 % Strain computation
 B = G{1} ; % E11 = dU1_dX1
