@@ -339,6 +339,7 @@ methods
         switch this.nDims % Displayed derivation orders
             case 1
                 ORD = [0;1;2] ;
+                subdiv = 1000 ;
             case 2
                 ORD = [0 0 ; 1 0 ; 0 1 ; 2 0 ; 0 2 ; 1 1] ;
             case 3

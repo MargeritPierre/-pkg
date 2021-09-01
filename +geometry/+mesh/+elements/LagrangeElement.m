@@ -324,7 +324,7 @@ classdef LagrangeElement < pkg.geometry.mesh.elements.AbstractElement
                             end
                         otherwise
                             warning('Element integration scheme limited to order 3.') ;
-                            this.setGaussIntegration(1) ;
+                            this.setGaussIntegration(3) ;
                             return ; 
                     end
             end

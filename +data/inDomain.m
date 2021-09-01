@@ -168,7 +168,7 @@ function kdTree
     en = find(tree.endNodes) ;
     dd = {tree.Nodes(en).Data} ;
     nd = cellfun(@numel,dd) ;
-    newEdges = [reshape(repelem(en(:),nd),[],1) reshape(cat(2,dd{:})',[],1)+tree.nNodes] ;
+    newEdges = [reshape(repelem(en(:),nd),[],1) cat(1,dd{:})+tree.nNodes] ;
     tree.Edges = [tree.Edges ; newEdges] ;
     tree.Nodes(end+nInt) = pkg.graph.Node ;
     
@@ -217,7 +217,7 @@ function kdTree
     
 end
 
-% USING A KD-TREE FOR THE BOXES
+% USING A KD-TREE FOR THE BOXES (ALTERNATIVE LOOP)
 function extTree
     
     % Add the index in the lists
@@ -241,7 +241,7 @@ function extTree
     en = find(tree.endNodes) ;
     dd = {tree.Nodes(en).Data} ;
     nd = cellfun(@numel,dd) ;
-    newEdges = [reshape(repelem(en(:),nd),[],1) cat(2,dd{:})'+tree.nNodes] ;
+    newEdges = [reshape(repelem(en(:),nd),[],1) cat(1,dd{:})+tree.nNodes] ;
     tree.Edges = [tree.Edges ; newEdges] ;
     
     % Dispatch the test in the tree

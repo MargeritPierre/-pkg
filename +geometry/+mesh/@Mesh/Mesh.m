@@ -525,7 +525,7 @@ methods
                 while ~isempty(notConverged) && it<itMax
                     it = it + 1 ;
                     e_nc = e(notConverged,:) ; % [nE_nc nElmtDims]
-                    xe_nc = xe(:,notConverged,:) ;
+                    xe_nc = xe(:,notConverged,:) ; % [nCoord nE_nc nElmtNodes]
                 % Shape function evalutation (+derivatives)
                     N = elmtType.evalAt(e_nc) ; % [nE_nc nElmtNodes]
                     dN_de = elmtType.evalJacobianAt(e_nc) ; % [nE_nc nElmtNodes nElmtDims]
@@ -617,7 +617,7 @@ methods
         end
     end
     
-    function M = diffMat(this,P_or_E,ie,features,extrap,X,tol)
+    function D = diffMat(this,P_or_E,ie,features,extrap,X,tol)
     % Return sparse matrices M so that df(P)/dx_i = M{i}(P)*f_n
         if nargin<3 ; ie = [] ; end
         if nargin<4 ; features = this.Elems ; end
@@ -633,7 +633,7 @@ methods
             features = features.subpart(ie) ; 
         end
     % Evaluate the element shape function gradient at the given coordinates
-        M = repmat({sparse(size(E,1),this.nNodes)},[this.nCoord 1]) ;
+        D = repmat({sparse(size(E,1),this.nNodes)},[this.nCoord 1]) ;
         xe = features.dataAtIndices(X) ; % [nE nMaxNodesByElmt nCoord] 
         for typeIdx = 1:features.nTypes
             elmtType = features.Types(typeIdx) ;
@@ -645,12 +645,12 @@ methods
             iii = repmat(elmtIdx(:),[1 elmtType.nNodes]) ;
             jjj = double(features.NodeIdx(elmtIdx,1:elmtType.nNodes)) ;
             for cc = 1:this.nCoord
-                M{cc} = M{cc} + sparse(iii,jjj,dN_dx(:,:,cc),size(E,1),this.nNodes) ;
+                D{cc} = D{cc} + sparse(iii,jjj,dN_dx(:,:,cc),size(E,1),this.nNodes) ;
             end
         end
     end
     
-    function M = grad2Mat(this,P_or_E,ie,features,extrap,X,tol)
+    function M = diff2Mat(this,P_or_E,ie,features,extrap,X,tol)
     % Return sparse matrices M so that d2f(P)/(dx_i.dx_j) = M{i,j}(P)*f_n
     % d2f_dx2 = (d_dx)(df_de.de_dx) = d2f_de2.de_dx.de_dx + df_de.d2e_dx2
     % de_dx is the inverse Jacobian
@@ -695,6 +695,45 @@ methods
                     end
                 end
         end
+    end
+    
+    function L = divMat(this,varargin)
+    % Return D so that div(v) = D*v(:)
+    % varargin can be same than diffMat() or directly its result
+        if numel(varargin)==1 && iscell(varargin{1}) ; D = varargin{1} ;
+        else ; D = this.diffMat(varargin{:}) ; end
+        L = cat(2,D{:}) ;
+    end
+    
+    function G = gradMat(this,dim,varargin)
+    % Return G so that g = grad(v) = reshape(G*v(:),[],this.nCoord,dim) ; 
+    % where v is a vector function of dimension dim (==1 for scalar field)
+    % and g(:,i,j) = dvj_dxi
+        if nargin<2 ; dim = 1 ; end
+        if numel(varargin)==1 && iscell(varargin{1}) ; D = varargin{1} ;
+        else ; D = this.diffMat(varargin{:}) ; end
+        G = kron(speye(dim),cat(1,D{:})) ;
+    end
+    
+    function tG = tGradMat(this,dim,varargin)
+    % Return Gt so that g = grad(v)' = reshape(G*v(:),[],dim,this.nCoord) ; 
+    % where v is a vector function of dimension dim (==1 for scalar field)
+    % and g(:,i,j) = dvi_dxj
+        if nargin<2 ; dim = 1 ; end
+        if numel(varargin)==1 && iscell(varargin{1}) ; D = varargin{1} ;
+        else ; D = this.diffMat(varargin{:}) ; end
+        tG = cellfun(@(mat)kron(speye(dim),mat),D(:)','UniformOutput',false) ;
+        tG = cat(1,tG{:}) ;
+    end
+    
+    function S = symGradMat(this,varargin)
+    % Return S so that s = sym(grad(v)) = reshape(S*v(:),[],this.nCoord,this.nCoord) ; 
+    % where v is a vector function of dimension this.nCoord
+    % and s(:,i,j) = .5*(dvi_dxj + dvj_dxi)
+        dim = this.nCoord ;
+        if numel(varargin)==1 && iscell(varargin{1}) ; D = varargin{1} ;
+        else ; D = this.diffMat(varargin{:}) ; end
+        S = .5*(this.gradMat(dim,D) + this.tGradMat(dim,D)) ;
     end
     
     function [M,jj] = jumpMat(this,featJ,featF)

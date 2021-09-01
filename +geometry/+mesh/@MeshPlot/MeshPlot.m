@@ -110,18 +110,23 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         end
         function set.CData(this,cdata)
             cdata = full(cdata) ;
-            switch size(cdata,1)
-                case this.Mesh.nNodes % nodal values
-                    this.Faces.FaceColor = 'interp' ;
-                    this.Faces.FaceVertexCData = cdata ;
-                case this.Mesh.nElems % element values
-                    this.Faces.FaceColor = 'flat' ;
-                    this.Faces.FaceVertexCData = cdata ;
-                otherwise % try on gauss points
-                    [ee,~,ie] = this.Mesh.integration ;
-                    if size(cdata,1)~=numel(ie) ; error('Wrong shape for CData') ; end
-                    this.Faces.FaceColor = 'interp' ;
-                    this.Faces.FaceVertexCData = this.Mesh.interpMat(ee,ie)\cdata ;
+            if ischar(cdata) % 'none' or color string
+                this.Faces.FaceColor = cdata ;
+                this.Faces.FaceVertexCData = [] ;
+            else
+                switch size(cdata,1)
+                    case this.Mesh.nNodes % nodal values
+                        this.Faces.FaceColor = 'interp' ;
+                        this.Faces.FaceVertexCData = cdata ;
+                    case this.Mesh.nElems % element values
+                        this.Faces.FaceColor = 'flat' ;
+                        this.Faces.FaceVertexCData = cdata ;
+                    otherwise % try on gauss points
+                        [ee,~,ie] = this.Mesh.integration ;
+                        if size(cdata,1)~=numel(ie) ; error('Wrong shape for CData') ; end
+                        this.Faces.FaceColor = 'interp' ;
+                        this.Faces.FaceVertexCData = this.Mesh.interpMat(ee,ie)\cdata ;
+                end
             end
         end
     % Feature visibility

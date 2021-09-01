@@ -62,7 +62,7 @@ classdef BSpline < pkg.geometry.mesh.elements.AbstractElement
             N = ones(size(E,1),1) ;
             for d = 1:this.nDims
                 C = this.eval_1D_At(E(:,d),this.Order(d),this.Degree(d)) ;
-                N = repelem(N,1,size(C,2)).*repmat(C,1,size(N,2)) ;
+                N = repmat(N,1,size(C,2)).*repelem(C,1,size(N,2)) ;
             end
         end
         
@@ -80,7 +80,7 @@ classdef BSpline < pkg.geometry.mesh.elements.AbstractElement
                 DER = ones(size(E,1),1) ;
                 for d = 1:this.nDims
                     C = this.eval_1D_At(E(:,d),this.Order(d),this.Degree(d),ORD(d)) ;
-                    DER = repelem(DER,1,size(C,2)).*repmat(C,1,size(DER,2)) ;
+                    DER = repmat(DER,1,size(C,2)).*repelem(C,1,size(DER,2)) ;
                 end
             end
         end
@@ -111,9 +111,13 @@ classdef BSpline < pkg.geometry.mesh.elements.AbstractElement
         % Number of knots
             if nargin>=2 ; this.Order = ord ; end
             this.Order = this.Order(:).*ones(ndims,1) ;
-        % Order 
+        % Degree
             if nargin>=3 ; this.Degree = deg ; end
             this.Degree = this.Degree(:).*ones(ndims,1) ;
+            if any(this.Degree>=this.Order)
+                this.Degree = min(this.Degree,this.Order-1) ;
+                warning('The BSpline degree has been adjusted in order to be lower than the corresponding order.') ;
+            end
         % Node coordinates
             X = arrayfun(@colon,ones(ndims,1),ones(ndims,1).*this.Order,'UniformOutput',false) ;
             [X{:}] = ndgrid(X{:}) ;
