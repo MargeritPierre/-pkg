@@ -216,6 +216,67 @@ profile on
 profile off
 
 
+%% TEST RECURSIVE MESHING
+
+dx = 3/10*lvlst.defaultDiscreteLength ;
+tol = 1e-6*dx ;
+maxEdgLen = 1.9*dx ;
+minEdgLen = .55*dx ;
+Pfix = uniquetol(lvlst.discretizeContour(dx),dx/10,'ByRows',true,'DataScale',1) ;
+nPfix = size(Pfix,1) ;
+
+% Init the mesh
+Pn = [] ;
+mesh = pkg.geometry.mesh.Mesh('Nodes',Pfix,'Elems',[1 2 3]) ;
+clf ; axis equal ; plot(mesh)
+
+%% Remesh
+mesh.Nodes = [Pfix ; Pn] ;
+mesh.Elems.NodeIdx = delaunay(mesh.Nodes) ;
+
+% Remove faces outside the lvelset
+mesh.Elems = mesh.Elems.subpart(lvlst.Function(mesh.centroid)<=-tol) ;
+clf ; axis equal ; plot(mesh)
+
+newNodes = [] ;
+switch 1
+    case 1 % Split interior edges
+        edgToSplit = ~mesh.boundaryEdges ;
+        % Do not split too short edges
+        edgToSplit = edgToSplit & mesh.elemSize(mesh.Edges)>maxEdgLen ;
+        newNodes = mesh.centroid(mesh.Edges.subpart(edgToSplit)) ;
+    case 2 % Add a point a triangle centroid
+        newNodes = mesh.centroid ;
+end
+% Merge too close nodes
+    if ~isempty(newNodes)
+    % Get nodes groups, including fixed nodes
+        Pn = [Pn ; newNodes] ; 
+        [~,ind] = uniquetol([Pfix ; Pn],minEdgLen,'ByRows',true,'DataScale',1,'OutputAllIndices',true) ;
+    % Grouping matrix
+        ii = repelem(1:numel(ind),cellfun(@numel,ind))' ;
+        jj = cat(1,ind{:}) ; 
+        M = sparse(ii,jj,1) ;
+    % Remove nodes asociated to fixed nodes (including themselves)
+        M(any(M(:,1:nPfix),2),:) = [] ;
+        M(:,1:nPfix) = [] ;
+    % Take the barycenter
+        Pn = (M*Pn)./sum(M,2) ;
+    end
+% Add to mesh
+clf ; axis equal ; plot(mesh)
+
+%% To quadhex
+mesh = mesh.quadhex ;
+clf ; axis equal ; plot(mesh)
+
+%% SMOOTH
+mesh.LaplacianSmoothing([],100) ;
+clf ; axis equal ; plot(mesh)
+
+
+
+
         
 
 

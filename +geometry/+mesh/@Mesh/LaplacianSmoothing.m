@@ -6,7 +6,7 @@ if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
 
 % Format inputs
     % Lambda
-        if nargin<2 ; lmbda = [1 0]*0.5 ; end
+        if nargin<2 || isempty(lmbda) ; lmbda = [1 0]*0.5 ; end
         lmbda = lmbda(:)'.*[1 1] ;
     % Iterations
         if nargin<3 ; iterations = Inf ; end

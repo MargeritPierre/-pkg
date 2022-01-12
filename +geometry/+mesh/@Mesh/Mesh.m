@@ -652,9 +652,11 @@ methods
     
     function M = diff2Mat(this,P_or_E,ie,features,extrap,X,tol)
     % Return sparse matrices M so that d2f(P)/(dx_i.dx_j) = M{i,j}(P)*f_n
-    % d2f_dx2 = (d_dx)(df_de.de_dx) = d2f_de2.de_dx.de_dx + df_de.d2e_dx2
-    % de_dx is the inverse Jacobian
-    % d2e_dx2 is the inverse Hessian
+    % d2f_dx2 = (d_dx)(df_de.de_dx) = d2f_de2.de_dx.de_dx + df_de.(d_dx)(de_dx)
+    %         = d2f_de2.iJ.iJ + df_de.d(iJ)_de.iJ
+    %         = d2f_de2.iJ.iJ - df_de.iJ.H.iJ.iJ
+    % iJ = de_dx is the inverse Jacobian
+    % H = dJ_de = d2x_de2 is the Hessian
         if nargin<3 ; ie = [] ; end
         if nargin<4 ; features = this.Elems ; end
         if nargin<5 ; extrap = false ; end
@@ -674,19 +676,29 @@ methods
         for typeIdx = 1:features.nTypes
             elmtType = features.Types(typeIdx) ;
             elmtIdx = find(features.TypeIdx==typeIdx) ;
-            % Iverse Jacobian
+            % First derivative
                 dN_de = elmtType.evalJacobianAt(E(elmtIdx,1:elmtType.nDims)) ; % [nE nElmtNodes nElmtDims]
+            % Jacobian
                 dx_de = permute(sum(xe(elmtIdx,1:elmtType.nNodes,:).*permute(dN_de,[1 2 4 3]),2),[1 3 4 2]) ; % [nE nCoord nElmtDims] 
+            % Inverse Jacobian
                 de_dx = pkg.math.pinv(permute(dx_de,[2 3 1])) ; % [nElmtDims nCoord nE]
-            % Hessian
+            % Second derivative
                 d2N_de2 = elmtType.evalHessianAt(E(elmtIdx,1:elmtType.nDims)) ; % [nE nElmtNodes nElmtDims nElmtDims]
-                %d2x_de2 = permute(sum(xe(elmtIdx,1:elmtType.nNodes,:).*permute(d2N_de2,[1 2 5 3 4]),2),[1 3 4 5 2]) ; % [nE nCoord nElmtDims nElmtDims]
-            % Second-order derivatives
+            % Hessian
+                d2x_de2 = sum(xe(elmtIdx,1:elmtType.nNodes,:).*permute(d2N_de2,[1 2 5 3 4]),2) ; % [nE 1 nCoord nElmtDims nElmtDims]
+                d2x_de2 = permute(d2x_de2,[3 4 1 5 2]) ; % [nCoord nElmtDims nE nElmtDims]
+            % d2f_de2.iJ.iJ 
                 d2N_de2 = permute(d2N_de2,[3 4 1 2]) ; % [nElmtDims nElmtDims nE nElmtNodes]
-                d2N_dxde = pkg.math.mtimes(d2N_de2,de_dx) ; % [nCoord nCoord nE nElmtNodes]
+                d2N_dxde = pkg.math.mtimes(d2N_de2,de_dx) ; % [nElmtDims nCoord nE nElmtNodes]
                 dN2_dx2 = pkg.math.mtimes(permute(de_dx,[2 1 3]),d2N_dxde) ; % [nCoord nCoord nE nElmtNodes]
-                dN2_dx2 = permute(dN2_dx2,[3 4 1 2]) ; % [nE nElmtNodes nCoord nCoord]
+            % df_dx.H.iJ.iJ
+                dN_dx = pkg.math.mtimes(permute(dN_de,[4 3 1 2]),de_dx) ; % [1 nCoord nE nElmtNodes]
+                HiJ = pkg.math.mtimes(d2x_de2,de_dx) ; % [nCoord nCoord nE nElmtDims]
+                HiJiJ = sum(HiJ.*permute(de_dx,[4 5 3 1 2]),4) ; % [nCoord nCoord nE 1 nCoord]
+                dN_dxHiJiJ = pkg.math.mtimes(dN_dx,HiJiJ) ; % [1 nCoord nE nElmtNodes nCoord]
+                dN2_dx2 = dN2_dx2 - permute(dN_dxHiJiJ,[2 5 3 4 1]) ; % [nCoord nCoord nE nElmtNodes]
             % Sparse matrices
+                dN2_dx2 = permute(dN2_dx2,[3 4 1 2]) ; % [nE nElmtNodes nCoord nCoord]
                 iii = repmat(elmtIdx(:),[1 elmtType.nNodes]) ;
                 jjj = double(features.NodeIdx(elmtIdx,1:elmtType.nNodes)) ;
                 for c1 = 1:this.nCoord

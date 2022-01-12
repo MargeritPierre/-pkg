@@ -87,7 +87,7 @@ end
 
 %% LEVEL SET ADVECTION
 methods
-    function [this,keepDOF] = advect(this,U)
+    function [this,keepDOF] = advect(this,U,subdiv,tol)
     % Advection of the levelset with the nodal displacement U
     % Solve dphi = - U.grad(phi) using a variationnal formulation
     % with s virtual field: 
@@ -97,6 +97,13 @@ methods
     %       + int(grad(s).u*phi.dx)
     % with dphi = phi_{n+1} - phi{n} and phi = theta*phi_{n+1} + (1-theta)*phi{n}
     % keepDOF [nNodes 1] logical, imposed BCs
+        if nargin<3 || isempty(subdiv) 
+            Le = this.LevelSetMesh.elemSize(this.LevelSetMesh.Edges) ;
+            maxU = .5*median(Le) ;
+            subdiv = ceil(max(sqrt(sum(U.^2,2)))/maxU) ;
+        end
+        U = U/subdiv ;
+        if nargin<4 || isempty(tol) ; tol = 1e-6 ; end
     % Domain integrals
         [ee,we,ie] = this.LevelSetMesh.integration ;
         W = diag(sparse(we)) ;
@@ -119,11 +126,23 @@ methods
         isInflow = logical(Nb'*(un<0)) ;
         fixDOF = isInflow ; % | all(U==0,2) ;
         keepDOF = ~fixDOF ;
-    % Advection
+    % Problem matrices
         dR = Kdiv + Kgsup - Ksunp ; 
         K = Ksp - this.Theta*dR ;
-        dphi = K(keepDOF,keepDOF)\(dR(keepDOF,:)*this.LevelSetValues) ;
-        this.LevelSetValues(keepDOF) = this.LevelSetValues(keepDOF) + dphi ;
+    % With BCs..
+        K = K(keepDOF,keepDOF) ;
+        dR = dR(keepDOF,:) ;
+    % Preconditionner
+        [LL,UU] = ilu(K) ; 
+    % Updating
+        phi = this.LevelSetValues ;
+        for it = 1:subdiv
+            r = dR*phi ;
+            [dphi,flag] = gmres(K,dR*phi,[],tol*norm(r),100,LL,UU) ;
+            if flag>0 ; warnin('GMRES failed') ; end
+            phi(keepDOF) = phi(keepDOF) + dphi ;
+        end
+        this.LevelSetValues = phi ;
     % Reinitialization ?
         if this.AutoReInit ; this = this.reinit(keepDOF) ; end
     end
@@ -171,7 +190,7 @@ methods
     % Convert to characteristic function
         isSignedDistance = ~isCharacteristic(this) ;
         if isSignedDistance ; this.Thickness = this.defaultThickness ; end
-        epsN = 1e-3/this.Thickness ; % normal regulariation when the gradient vanishes
+        epsN = 1e-2/this.Thickness ; % normal regulariation when the gradient vanishes
     % Diriclet BC by default
         if nargin<2
             %keepDOF = ~this.LevelSetMesh.boundaryNodes ; 
@@ -220,10 +239,18 @@ methods
         dRp = - Kgsgp + 0*Ksngp ; % linear part
         dphi = Inf ; it = 0 ;
         while it<maxIt && norm(dphi)>tol
+        % Non-linear assembly
             r = dRpp*(phi.*(1-phi)) + dRp*phi ;
             dR_dphi = dRpp*diag(sparse(1-2*phi)) + dRp ;
             K = M - this.Theta*dR_dphi ;
-            dphi = K(keepDOF,keepDOF)\r(keepDOF) ;
+        % Apply BC
+            K = K(keepDOF,keepDOF) ;
+            r = r(keepDOF) ;
+        % Solve
+            [LL,UU] = ilu(K) ;
+            [dphi,flag] = gmres(K,r,[],1e-3*tol*norm(r),100,LL,UU) ;
+            if flag>0 ; warnin('GMRES failed') ; end
+        % Update
             phi(keepDOF) = phi(keepDOF) + dphi ;
             it = it+1 ;
             %cla ; axis equal ; pl = plot(this.LevelSetMesh,'Deformation',[0 0 1].*phi) ; pl.Selected.Nodes = ~keepDOF ; drawnow ;
@@ -282,12 +309,12 @@ end
 %% UNIT TESTS
 function tests
 %% ROTATING SHAPES
-    clc ; %clearvars
+    clc ; clearvars
     % Parameters
         shape = 'diskslit' ; % see below
-        margin = 1/3 ; de = 1/100 ;
+        margin = 1/3 ; de = 1/300 ;
         elemType = 'quad' ; % 'tri' or 'quad'
-        angle = 2*pi ; nIt = 200 ;
+        angle = 2*pi ; nIt = 50 ;
     % Geometry levelset
         import pkg.geometry.levelset.*
         switch lower(shape)
@@ -323,6 +350,7 @@ function tests
         lvlst0 = lvlst ;
     % Build the velocity field
         V = (angle/nIt)*((mesh.Nodes-mean(mesh.Nodes,1))*[0 1;-1 0]) ;
+        maxRelV = max(sqrt(sum(V.^2,2)))/dx
     % Point tracers
         P = [] ; [mean(bbox,1)+[0 -.25].*range(bbox,1) 1] ;
     % Init display

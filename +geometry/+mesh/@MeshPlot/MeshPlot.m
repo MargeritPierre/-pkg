@@ -498,7 +498,7 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         % Set the property
             this.Selected = selected ;
         % Nodes
-            vertices = [this.Mesh.Nodes ; NaN(1,this.Mesh.nCoord)] ;
+            vertices = padarray(this.NodeCoordinates,[1 0],NaN,'post') ; 
             this.setPatch(this.SelectedNodes,vertices(this.Selected.Nodes,:)) ;
         % Other features (Elems, Faces, Edges)
             IDX = [] ;
@@ -525,7 +525,7 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         % Set the property
             this.Highlighted = highlighted ;
         % Nodes
-            vertices = [this.Mesh.Nodes ; NaN(1,this.Mesh.nCoord)] ;
+            vertices = padarray(this.NodeCoordinates,[1 0],NaN,'post') ; 
             this.setPatch(this.HighlightedNodes,vertices(this.Highlighted.Nodes,:)) ;
         % Other features (Elems, Faces, Edges)
             IDX = [] ;

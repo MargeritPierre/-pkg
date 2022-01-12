@@ -49,7 +49,27 @@ classdef LagrangeElement < pkg.geometry.mesh.elements.AbstractElement
     methods
         function this = LagrangeElement(geometry,order)
         % Constructor of the class
-            if nargin<2 ; order = 1 ; end
+            % Default order
+                if nargin<2 ; order = 1 ; end
+            % Is the geometry a base element ?
+                if ~ischar(geometry)
+                    if isa(geometry,'pkg.geometry.mesh.elements.base.BaseElement')
+                        this = pkg.geometry.mesh.elements.LagrangeElement.empty ;
+                        for gg = geometry(:)'
+                            switch regexprep(class(gg),'pkg\.geometry\.mesh\.elements\.base\.','')
+                                case 'Bar' ; this(end+1) = pkg.geometry.mesh.elements.LagrangeElement('1D',order) ;
+                                case 'Triangle' ; this(end+1) = pkg.geometry.mesh.elements.LagrangeElement('tri',order) ;
+                                case 'Quadrangle' ; this(end+1) = pkg.geometry.mesh.elements.LagrangeElement('quad',order) ;
+                                case 'Tetrahedron' ; this(end+1) = pkg.geometry.mesh.elements.LagrangeElement('tet',order) ;
+                                case 'Hexahedron' ; this(end+1) = pkg.geometry.mesh.elements.LagrangeElement('hex',order) ;
+                                otherwise ; error(['No LagrangeElement substitution to ' class(gg)]) ; 
+                            end
+                        end
+                        return ; 
+                    else
+                        error(['No LagrangeElement substitution to ' class(geometry)]) ; 
+                    end
+                end
             % Record Inputs
                 this.Geometry = geometry ;
                 this.Order = order ;

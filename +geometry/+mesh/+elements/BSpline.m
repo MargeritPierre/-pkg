@@ -156,7 +156,7 @@ function test
 
 %% CREATE A 1D BI-SPLINE ELEMENT AND PLOT ITS SHAPE FUNCTIONS & DERIVATIVES
 
-elmt = pkg.geometry.mesh.elements.BSpline('1D',4,3) ;
+elmt = pkg.geometry.mesh.elements.BSpline('1D',4,2) ;
 der = 1 ; 
 %clf ; plot(elmt,'shapefunctions') ;
 
@@ -209,6 +209,23 @@ ma = patch('vertices',[NaN NaN],'faces',[1 1],'EdgeColor','b','FaceColor','b','M
 poly = images.roi.Polyline('Parent',gca,'Position',P,'LineWidth',1) ;
 addlistener(poly,'MovingROI',@(src,evt)set(pl,'vertices',[elmt.evalAt(u)*poly.Position ; NaN NaN])) ;
 set(gcf,'WindowButtonMotionFcn',@(src,evt)set(ma,'vertices',elmt.evalAt(mesh.localize(ax.CurrentPoint(1,1:2),mesh.Elems,false,poly.Position))*poly.Position))
+
+%% 1D BSPLINE MESH DERIVATIVE
+
+elmt = pkg.geometry.mesh.elements.BSpline('1D',10,1) ;
+mesh = pkg.geometry.mesh.Mesh('Nodes',elmt.NodeLocalCoordinates ...
+                             ,'Elems',pkg.geometry.mesh.elements.ElementTable('Types',elmt,'NodeIdx',1:elmt.nNodes)) ;
+clf ; plot(mesh,'VisibleNodes','all','NodeSize',25) ;
+
+[E,ie] = mesh.localize(linspace(-.1,1.1,100)',mesh.Elems,true) ;
+N = mesh.interpMat(E,ie) ;
+D = mesh.diff2Mat(E,ie) ;
+X = N*mesh.Nodes ;
+F = X.^2 ;
+Fn = N\F ;
+dF = D{1}*Fn ;
+clf ; plot(X,F) ; plot(X,N*Fn)
+clf ; plot(X,dF)
 
 
 

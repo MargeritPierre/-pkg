@@ -64,6 +64,7 @@ function mesh = setElementTypes(this,types)
 % Get nodes that are duplicated in the new mesh
 % /!\This step weld splitted edges and faces!
     [mesh.Nodes,~,nn] = uniquetol(mesh.Nodes,mesh.defaultTolerance,'ByRows',true,'DataScale',1) ;
+    nn(end+1) = NaN ; NodeIdx(NodeIdx==0) = numel(nn) ;
     mesh.Elems.NodeIdx = reshape(nn(NodeIdx),this.nElems,[]) ;
 % Split edges that were splitted before
     if mesh.nEdges~=this.nEdges
