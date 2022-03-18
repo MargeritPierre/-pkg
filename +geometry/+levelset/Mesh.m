@@ -87,7 +87,7 @@ end
 
 %% LEVEL SET ADVECTION
 methods
-    function [this,keepDOF] = advect(this,U,subdiv,tol)
+    function [this,keepDOF] = advect(this,U,subdiv,tol,SUPG)
     % Advection of the levelset with the nodal displacement U
     % Solve dphi = - U.grad(phi) using a variationnal formulation
     % with s virtual field: 
@@ -97,13 +97,17 @@ methods
     %       + int(grad(s).u*phi.dx)
     % with dphi = phi_{n+1} - phi{n} and phi = theta*phi_{n+1} + (1-theta)*phi{n}
     % keepDOF [nNodes 1] logical, imposed BCs
+    % SUPG stabilization:
+    %   add a regularization term int((grad(s).w)*(dphi+u.grad(phi)).dx)
+    %   where weights w = .5*h*u/|u|
         if nargin<3 || isempty(subdiv) 
             Le = this.LevelSetMesh.elemSize(this.LevelSetMesh.Edges) ;
-            maxU = .5*median(Le) ;
+            maxU = .95*median(Le) ;
             subdiv = ceil(max(sqrt(sum(U.^2,2)))/maxU) ;
         end
         U = U/subdiv ;
         if nargin<4 || isempty(tol) ; tol = 1e-6 ; end
+        if nargin<5 || isempty(SUPG) ; SUPG = true ; end
     % Domain integrals
         [ee,we,ie] = this.LevelSetMesh.integration ;
         W = diag(sparse(we)) ;
@@ -124,11 +128,27 @@ methods
         Ksunp = Nb'*diag(sparse(wb.*un))*Nb ;
     % Dirichlet BC on the inflow boundaries (U.n<0 or U==0)
         isInflow = logical(Nb'*(un<0)) ;
-        fixDOF = isInflow ; % | all(U==0,2) ;
+        fixDOF = isInflow ; % | all(U==0,2) ; this.LevelSetMesh.boundaryNodes ;
         keepDOF = ~fixDOF ;
     % Problem matrices
-        dR = Kdiv + Kgsup - Ksunp ; 
-        K = Ksp - this.Theta*dR ;
+        dR = Kdiv - Ksunp + Kgsup ; 
+        K = Ksp ;
+    % Stabilization terms
+        if SUPG
+            el2ed = this.LevelSetMesh.elem2edge ;
+            h = (el2ed.*(1./sum(el2ed,1)))'*this.LevelSetMesh.elemSize(this.LevelSetMesh.Edges) ;
+            w = .5*h(ie).*(u./sqrt(sum(u.^2,2)+eps)) ;
+            gsw = cat(1,G{:})'*diag(sparse(w(:)))*repmat(W,numel(G),1) ;
+            % int((grad(s).w)*dphi.dx)
+                Kgswp = gsw*N ;
+            % int((grad(s).w)*(u.grad(phi)).dx)
+                Kgswugp = gsw*repmat(speye(size(W)),1,numel(G))*diag(sparse(u(:)))*cat(1,G{:}) ;
+            % regularization
+                dR = dR - Kgswugp ;
+                K = K + Kgswp ;
+        end
+    % Theta-Scheme
+        K = K - this.Theta*dR ;
     % With BCs..
         K = K(keepDOF,keepDOF) ;
         dR = dR(keepDOF,:) ;
@@ -139,7 +159,7 @@ methods
         for it = 1:subdiv
             r = dR*phi ;
             [dphi,flag] = gmres(K,dR*phi,[],tol*norm(r),100,LL,UU) ;
-            if flag>0 ; warnin('GMRES failed') ; end
+            if flag>0 ; warning('GMRES failed') ; end
             phi(keepDOF) = phi(keepDOF) + dphi ;
         end
         this.LevelSetValues = phi ;
@@ -190,11 +210,11 @@ methods
     % Convert to characteristic function
         isSignedDistance = ~isCharacteristic(this) ;
         if isSignedDistance ; this.Thickness = this.defaultThickness ; end
-        epsN = 1e-2/this.Thickness ; % normal regulariation when the gradient vanishes
+        epsN = 1e-3/this.Thickness ; % normal regulariation when the gradient vanishes
     % Diriclet BC by default
         if nargin<2
-            %keepDOF = ~this.LevelSetMesh.boundaryNodes ; 
-            keepDOF = true(this.LevelSetMesh.nNodes,1) ; 
+            keepDOF = ~this.LevelSetMesh.boundaryNodes ; 
+            %keepDOF = true(this.LevelSetMesh.nNodes,1) ; 
         end
     % Iteration infos
         if nargin<3 ; tol = 1e-2 ; end
@@ -212,7 +232,7 @@ methods
         grad = cat(1,G{:}) ;
     % Levelset normal n0 = grad(phi)/|grad(phi)| (on the volume)
         gradPhi = reshape(grad*phi,numel(we),nCoord) ; % [nGP nCoord]
-        n0 = gradPhi./(sqrt(sum(gradPhi.^2,2))+epsN) ;
+        n0 = gradPhi./(sqrt(sum(gradPhi.^2,2)+epsN^2)) ;
     % int(s*dphi*dx)
         Ksp = N'*W*N ;
         Ksp = diag(sum(Ksp,2)) ;
@@ -228,7 +248,7 @@ methods
         gradB = cat(1,Gb{:}) ;
     % Levelset normal n0 = grad(phi)/|grad(phi)| (on the boundary)
         gradPhiB = reshape(gradB*phi,numel(wb),nCoord) ; % [nGP nCoord]
-        n0B = gradPhiB./sqrt(sum(gradPhiB.^2,2)+epsN) ;
+        n0B = gradPhiB./(sqrt(sum(gradPhiB.^2,2)+epsN^2)) ;
     % int(e*s*n.grad(phi)*dS) 
         Ksngp = this.Thickness*Nb'*repmat(Wb,[1 nCoord])*diag(sparse(normal(:)))*gradB ;
     % int(s*n0.n*phi*(1-phi)*dS) 
@@ -249,7 +269,7 @@ methods
         % Solve
             [LL,UU] = ilu(K) ;
             [dphi,flag] = gmres(K,r,[],1e-3*tol*norm(r),100,LL,UU) ;
-            if flag>0 ; warnin('GMRES failed') ; end
+            if flag>0 ; warning('GMRES failed') ; end
         % Update
             phi(keepDOF) = phi(keepDOF) + dphi ;
             it = it+1 ;
@@ -311,10 +331,12 @@ function tests
 %% ROTATING SHAPES
     clc ; clearvars
     % Parameters
-        shape = 'diskslit' ; % see below
-        margin = 1/3 ; de = 1/300 ;
+        shape = 'square' ; % see below
+        margin = .5*1/3 ; de = 1/50 ;
         elemType = 'quad' ; % 'tri' or 'quad'
-        angle = 2*pi ; nIt = 50 ;
+        angle = 1/2*pi ; nIt = 10 ;
+        autoReInit = true ;
+        SUPG = true ;
     % Geometry levelset
         import pkg.geometry.levelset.*
         switch lower(shape)
@@ -346,6 +368,7 @@ function tests
         lvlst = pkg.geometry.levelset.Mesh(mesh,lvl,'AutoBuildEdges',false) ;
     % Set as characteristic
         lvlst.Thickness = lvlst.defaultThickness ; % set chacteristic
+        lvlst.AutoReInit = autoReInit ;
     % Backup
         lvlst0 = lvlst ;
     % Build the velocity field
@@ -355,7 +378,7 @@ function tests
         P = [] ; [mean(bbox,1)+[0 -.25].*range(bbox,1) 1] ;
     % Init display
         cla ; axis equal
-        pl = plot(lvlst,'asmesh','EdgeColor','none') ;
+        pl = plot(lvlst,'asmesh','EdgeColor','none');%,'VisibleNodes','all') ;
         pt = patch('vertices',P,'Faces',(1:size(P,1))','marker','o','markeredgecolor','k') ;
         quiver(mesh.Nodes(:,1),mesh.Nodes(:,2),V(:,1),V(:,2)) ;
         drawnow ;
@@ -366,9 +389,10 @@ function tests
                 P(:,1:2) = P(:,1:2) + mesh.interpMat(P(:,1:2)+.0*(mesh.interpMat(P(:,1:2))*V))*V ; 
                 pt.Vertices = P ;
             end
-            lvlst = lvlst.advect(V) ;
-            pl.Deformation = [0 0 1].*lvlst.LevelSetValues ;
+            [lvlst,keepDOF] = lvlst.advect(V,[],[],SUPG) ;
+            %pl.Deformation = [0 0 1].*lvlst.LevelSetValues ;
             pl.CData = lvlst.LevelSetValues ;
+            %pl.Selected.Nodes = ~keepDOF ;
             drawnow ;
         end
         profile off

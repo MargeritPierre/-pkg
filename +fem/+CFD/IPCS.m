@@ -309,7 +309,7 @@ methods (Static)
     function channelFlow
     %% FLOW IN A CHANNEL
         clc,clearvars
-        L = [1 .3] ; dx = min(L)/100 ;
+        L = [1 .3] ; dx = min(L)/10 ;
         mu = 1e2 ; rho = 1 ; 
         dP = 10 ; dt = dx/10 ;
         mesh = pkg.geometry.levelset.Rectangle(L.*[0;1]).mesh(dx) ;
@@ -319,12 +319,12 @@ methods (Static)
         FEM = pkg.fem.CFD.IPCS(mesh,'rho',rho,'mu',mu,'Ubc',Ubc,'Pbc',Pbc,'dt',dt) ;
         clf ; axis equal ; pl = plot(FEM.PMesh) ; q = quiver(FEM.UMesh.Nodes(:,1),FEM.UMesh.Nodes(:,2),FEM.u(:,1),FEM.u(:,2)) ;
         T=0 ;
-        while T<10*dt
+        while T<1000*dt
             tic ; FEM.step ; toc
             T = T+FEM.dt ;
-            %pl.CData = FEM.p ;
-            %q.UData = FEM.u(:,1) ; q.VData = FEM.u(:,2) ;
-            %drawnow ;
+            pl.CData = FEM.p ;
+            q.UData = FEM.u(:,1) ; q.VData = FEM.u(:,2) ;
+            drawnow ;
         end
         profile off
         

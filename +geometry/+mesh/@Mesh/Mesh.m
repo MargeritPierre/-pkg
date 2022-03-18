@@ -748,6 +748,22 @@ methods
         S = .5*(this.gradMat(dim,D) + this.tGradMat(dim,D)) ;
     end
     
+    function C = curlMat(this,varargin)
+    % Return C so that c = curl(v)
+    % where v is a vector function of dimension this.nCoord
+        dim = this.nCoord ;
+        if numel(varargin)==1 && iscell(varargin{1}) ; D = varargin{1} ;
+        else ; D = this.diffMat(varargin{:}) ; end
+        switch dim
+            case 2 % 2D : curl(v) = v2,1 - v1,2
+                C = [-D{2} D{1}] ;
+            case 3 % 3D : curl(v) = [ v3,2 - v2,3 ; v1,3 - v3,1 ; v2,1 - v1,2 ]
+                O = D{end}*0 ; % zero matrix
+                C = [O -D{3} D{2} ; D{3} O -D{1} ; -D{2} D{1} O] ;
+            otherwise ; error(['Curl is not defined in ' num2str(dim) 'D']) ;
+        end
+    end
+    
     function [M,jj] = jumpMat(this,featJ,featF)
     % Return a sparse matrix so that j = M*f is the jump of f
     % f is defined on featF

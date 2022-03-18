@@ -41,7 +41,7 @@ h = plot(lvlst) ;
 delete(findobj(gcf,'type','hggroup')) ;
 
 % Mesh edge length
-    h0 = norm(range(lvlst.BoundingBox,1))/200 ;
+    h0 = norm(range(lvlst.BoundingBox,1))/50 ;
 % Apply distmesh
     mesh = lvlst.mesh('h0',h0) ;
 % Display
@@ -78,7 +78,7 @@ delete(findobj(gcf,'type','hggroup')) ;
 %% CREATE THE REFERENCE IMAGE
     
 % Speckle image
-    density = 7/10 ;
+    density = 8/10 ;
     medFiltSize = 3 ;
     gaussFiltSize = 7 ;
     edgeWidth = 2 ;
