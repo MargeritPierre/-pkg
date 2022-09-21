@@ -55,6 +55,8 @@ methods
         else
     % Mesh from a specific object class
             switch class(input)
+                case 'char'
+                    this = this.stlread(input) ;
                 case 'pkg.geometry.mesh.Mesh'
                     this = copy(this) ;
                 otherwise
@@ -599,7 +601,7 @@ methods
     % Return a sparse interpolation matrix so that f(P) = M*f_n
         if nargin<2 ; P_or_E = this.centroid ; end
         if nargin<3 ; ie = [] ; end
-        if nargin<4 || ~numel(features) ; features = this.Elems ; end
+        if nargin<4 || isempty(features) || ~numel(features) ; features = this.Elems ; end
         if nargin<5 ; extrap = nargin<3 ; end
         if nargin<6 ; X = this.Nodes ; end
         if nargin<7 ; tol = this.defaultTolerance(X) ; end
@@ -856,6 +858,24 @@ methods
         [E,ie] = features.getListOf('GaussIntegrationPoints') ;
         [W,ii] = features.getListOf('GaussIntegrationWeights') ;
         if ~isequal(ie,ii) ; error('Integration points and weights mismatch.') ; end
+    % With the transformation jacobian
+        W = W.*detJacobian(this,E,ie,features,false,X) ;
+    end
+    
+    function [E,W,ie] = lumpedIntegration(this,features,X)
+    % Return everything needed for integration with a lumped scheme
+    % (integration points coincide with element nodes)
+    % E: feature local coordinates of gauss points
+    % W: associated quadrature weights
+    % ie: feature indices
+    % toElems: translate to elements
+        if nargin<2 ; features = this.Elems ; end
+        if nargin<3 ; X = this.Nodes ; end
+        if nargin<4 ; toElems = false ; end
+    % Quadrature points & weights
+        [E,ie] = features.getListOf('NodeLocalCoordinates') ;
+        W = 1./features.nNodes ;
+        W = W(ie) ;
     % With the transformation jacobian
         W = W.*detJacobian(this,E,ie,features,false,X) ;
     end
@@ -1171,6 +1191,8 @@ methods
     % Change the element indices
         newNodeIdx = double(keep) ;
         newNodeIdx(keep) = 1:sum(keep) ;
+        remElem = any(ismember(mesh.Elems.NodeIdx,find(remove)),2) ;
+        mesh.Elems.Indices(remElem,:) = [] ;
         mesh.Elems = mesh.Elems.changeNodeIdx(newNodeIdx(:)) ;
     end
 
@@ -1230,7 +1252,7 @@ methods
         T = T.*(1./sum(T,2)) ;
     end
 
-    function [mesh,nodesMoved,old2new] = cullDuplicates(this,tol)
+    function [mesh,nodesMoved,old2new,meanMat] = cullDuplicates(this,tol)
     % Cull duplicate nodes in the mesh and corresponding elements
         if nargin<2 ; tol = this.defaultTolerance ; end
         if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
@@ -1242,6 +1264,33 @@ methods
         mesh.Nodes = meanMat*mesh.Nodes ;
     % New element list
         mesh.Elems = mesh.Elems.changeNodeIdx(old2new) ;
+    end
+    
+    function varargout = perNodeMat(this,vPer,tol,inner)
+    % Return periodicity matrices associated to a mesh
+    % periodicity matrices u = T{1}*T{2}*...*T{n}*u_per
+    % vPer can be given to specify periodicity vectors
+        if nargin<2 ; vPer = diag(range(this.Nodes,1)) ; end
+        if nargin<3 ; tol = this.defaultTolerance() ; end
+        if nargin<4 ; inner = false ; end % not implemented, should test only outer nodes if false
+        nPerVec = size(vPer,1) ;
+    % Process each vector individually
+        T = cell(1,nPerVec) ;
+        for pp = 1:nPerVec
+            [~,ind] = uniquetol([this.Nodes ; this.Nodes - vPer(pp,:)],tol,'DataScale',1,'OutputAllIndices',true,'ByRows',true) ;
+            ind = ind(cellfun(@numel,ind)>1) ; 
+            ind = cat(2,ind{:}) ;
+            master = ind(1,:) ; 
+            slave = ind(2,:)-this.nNodes ;
+            ni = setdiff(1:this.nNodes,slave) ;
+            T{pp} = sparse([ni slave],[ni master],1,this.nNodes,this.nNodes) ;
+        end
+        if nargout<=1
+            for pp = 2:nPerVec ; T{1} = T{1}*T{pp} ; end
+            varargout = T(1) ;
+        else
+            varargout = T ;
+        end
     end
 
 end
@@ -1291,6 +1340,23 @@ methods
                     fillMesh = pkg.geometry.mesh.fromBoundary(X(bndCrv{bb},:)) ;
             end
             mesh = merge(mesh,fillMesh) ;
+        end
+    end
+    
+    function lvlst = sdf(this)
+    % Return a signed distance function corresponding to the mesh boundaries
+        X = this.Nodes ;
+    % Extract boundary curves
+        [~,bndCrv] = this.boundaryCurves ;
+    % Create new meshes from the inner contours and merge with the current mesh
+        for bb = 1:numel(bndCrv) % the outer boundary curve is often the first; we skip it
+            x = X(bndCrv{bb},:) ; 
+            x = unique(x,'rows','stable') ;
+            if bb==1 % the first curve is usually the outer boundary
+                lvlst = pkg.geometry.levelset.Polygon(x) ;
+            else
+                lvlst = lvlst - pkg.geometry.levelset.Polygon(x) ;
+            end
         end
     end
 end
@@ -1393,6 +1459,16 @@ methods
         tri = triangulation(double(nodeIdx),this.Nodes(uIdx,:)) ;
     % Write the file
         stlwrite(tri,filename) ;
+    end
+end
+methods (Static)
+    function mesh = stlread(filename)
+    % Import a STL file
+        TR = stlread(filename) ;
+        tri = pkg.geometry.mesh.elements.base.Triangle ;
+        idx = padarray(TR.ConnectivityList,[0 1],1,'pre') ;
+        elmt = pkg.geometry.mesh.elements.ElementTable('Types',tri,'Indices',idx) ;
+        mesh = pkg.geometry.mesh.Mesh('Nodes',TR.Points,'Elems',elmt) ;
     end
 end
 

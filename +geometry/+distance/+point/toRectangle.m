@@ -10,7 +10,7 @@ function d = toRectangle(P,CENTER,SIDES)
     if isempty(P) ; d = [] ; return ; end
 
     PTS = CENTER + 0.5*SIDES.*[-1 -1 ; 1 -1 ; 1 1 ; -1 1] ;
-    d = pkg.geometry.distance.toPolygon(P,PTS) ;
+    d = pkg.geometry.distance.point.toPolygon(P,PTS) ;
 
 end
 

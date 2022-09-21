@@ -9,7 +9,7 @@ function d = toPolygon(P,PTS)
     if isempty(P) ; d = [] ; return ; end
 
     % Distance to a polyline
-    d = pkg.geometry.distance.toPolyline(P,PTS([1:end,1],:)) ;
+    d = pkg.geometry.distance.point.toPolyline(P,PTS([1:end,1],:)) ;
     % Signed distance
     d = d.*(0.5-inpolygon(P(:,1),P(:,2),PTS(:,1),PTS(:,2)))*2 ;
 

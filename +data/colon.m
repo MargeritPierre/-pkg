@@ -20,6 +20,11 @@ if isempty(starts)
     return ;
 end
 
+% Reshape
+starts = reshape(starts,1,[]) ;
+ends = reshape(ends,1,[]) ;
+steps = reshape(steps,1,[]) ;
+
 % Individual lengths
 lengths = floor((ends-starts)./steps)+1 ;
 lengths(lengths<0) = 0 ; % negative lengths->empty vectors

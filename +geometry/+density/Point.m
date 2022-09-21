@@ -28,7 +28,7 @@ methods
     
     function h = evalAt(this,p)
     % Evaluate the distance
-        d = pkg.geometry.distance.toPoint(p,this.Center) ;
+        d = pkg.geometry.distance.point.toPoint(p,this.Center) ;
     % Interpolate the densities
         h = interp1(this.Densities(:,1),this.Densities(:,2),d,'linear',this.Densities(end,2)) ;
     end

@@ -20,7 +20,7 @@ function d = toPolytope(P,O,N,approx)
     N = permute(N,[3 2 1]) ; % [1 nCoord nCP]
     
 % Distance to polytope faces
-    dp = pkg.geometry.distance.toPlane(P,O,N) ; % [nP 1 nCP]
+    dp = pkg.geometry.distance.point.toPlane(P,O,N) ; % [nP 1 nCP]
     
 % Approximation by faces ? (exact inside)
     if approx ; d = max(dp,[],3) ; return ; end
@@ -75,7 +75,7 @@ function test
     P = 4*(rand(nP,nCoord)-0.5)*2 ;
  %
     profile on
-    tic ; d = pkg.geometry.distance.toPolytope(P,O,N,false) ; toc
+    tic ; d = pkg.geometry.distance.point.toPolytope(P,O,N,false) ; toc
     profile off
     d(d<0) = NaN ;
     

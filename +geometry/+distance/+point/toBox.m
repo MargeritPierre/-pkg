@@ -30,7 +30,7 @@ function test
     P = 2*(rand(nP,nCoord)-0.5)*2 ;
  %
     profile on
-    tic ; d = pkg.geometry.distance.toBox(P,CENTER,SIDES) ; toc
+    tic ; d = pkg.geometry.distance.point.toBox(P,CENTER,SIDES) ; toc
     profile off
     %d(d<0) = NaN ;
     

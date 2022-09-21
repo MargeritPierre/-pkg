@@ -7,7 +7,7 @@ methods
         if nargin<2 ; pts = [0 0 0;0 0 1] ; end
         if nargin<3 ; isfinite = false ; end
         this = this@pkg.geometry.levelset.LevelSet() ;
-        this.Function = @(p)pkg.geometry.distance.toCylinder(p,pts,isfinite) ;
+        this.Function = @(p)pkg.geometry.distance.point.toCylinder(p,pts,isfinite) ;
         this.Kinks = [] ;
         if isfinite
             this.BoundingBox = sort(pts,1) + radius*[-1 -1 -1 ; 1 1 1] ; % approximated!

@@ -10,7 +10,7 @@ function d = toPolyline(P,PTS)
     if isempty(P) ; d = [] ; return ; end
 
     PTS = permute(PTS,[3 2 1]) ;
-    dsegments = pkg.geometry.distance.toSegment(P,PTS(:,:,1:end-1),PTS(:,:,2:end)) ;
+    dsegments = pkg.geometry.distance.point.toSegment(P,PTS(:,:,1:end-1),PTS(:,:,2:end)) ;
     d = min(dsegments(:,:),[],2) ;
 
 end

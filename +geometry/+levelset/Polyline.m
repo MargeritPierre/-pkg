@@ -6,7 +6,7 @@ methods
     % Class construtor
         if nargin<2 ; edgFcn = 'segments' ; end
         this = this@pkg.geometry.levelset.LevelSet() ;
-        this.Function = @(p)pkg.geometry.distance.toPolyline(p,points) ;
+        this.Function = @(p)pkg.geometry.distance.point.toPolyline(p,points) ;
         this.BoundingBox = [min(points,[],1) ; max(points,[],1)] ;
         this.Kinks = points ;
         this.EdgeFcns = pkg.geometry.levelset.polylineEdgeFunctions(points,edgFcn) ;

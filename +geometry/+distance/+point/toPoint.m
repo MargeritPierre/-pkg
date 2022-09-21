@@ -2,7 +2,7 @@ function d = toPoint(P,PT)
 %TOPOINT Distance from a list of points P to a (list of) point(s) PT
 % inputs:
 %   - P [nP nCoord]
-%   - PT [1 nCoord nPT]
+%   - PT [(nP or 1) nCoord nPT]
 % output: 
 %   - distance d [nP 1 nL] 
 

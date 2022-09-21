@@ -153,10 +153,10 @@
     h0 = min(sqrt(min(sum(diff(P).^2,2))),hmax) ;
     switch distGeo
         case 'line'
-            dist = @(p)pkg.geometry.distance.toPolyline(p,P) ;
+            dist = @(p)pkg.geometry.distance.point.toPolyline(p,P) ;
         case 'point'
             Pp = permute(P,[3 2 1]) ;
-            dist = @(p)min(pkg.geometry.distance.toPoint(p,Pp),[],3) ;
+            dist = @(p)min(pkg.geometry.distance.point.toPoint(p,Pp),[],3) ;
     end
     fh = @(p)min(h0 + dh_dx*dist(p),hmax) ;
 % Fixed points

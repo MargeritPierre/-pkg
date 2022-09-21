@@ -9,7 +9,7 @@ function d = toCircle(P,CENTER,RADIUS)
 
     if isempty(P) ; d = [] ; return ; end
 
-    d = pkg.geometry.distance.toPoint(P,CENTER)-RADIUS ;
+    d = pkg.geometry.distance.point.toPoint(P,CENTER)-RADIUS ;
 
 end
 

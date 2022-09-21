@@ -97,17 +97,22 @@ end
 
 %% CONNECTIVITY MATRICES
 methods
+    function M = feat2node(this,M)
+    % Adjust the size of the connectivity matrix to match the number of nodes
+        if ~ismethod(this,'nNodes') ; return ; end
+        M(end+1:this.nNodes,:) = 0 ; 
+    end
     function M = elem2node(this,varargin)
     % Elements to Nodes [nNodes nElems]: nod(:) = M*elmt(:)
-        M = sparse(this.Elems,varargin{:}) ;
+        M = this.feat2node(sparse(this.Elems,varargin{:})) ;
     end
     function M = face2node(this,varargin)
     % Faces to Nodes [nNodes nFaces]: nod(:) = M*fa(:)
-        M = sparse(this.Faces,varargin{:}) ;
+        M = this.feat2node(sparse(this.Faces,varargin{:})) ;
     end
     function M = edge2node(this,varargin)
     % Faces to Nodes [nNodes nFaces]: nod(:) = M*fa(:)
-        M = sparse(this.Edges,varargin{:}) ;
+        M = this.feat2node(sparse(this.Edges,varargin{:})) ;
     end
     function M = elem2face(this,varargin)
     % Elements to Edges [nFaces nElems]: edg(:) = M*elmt(:)

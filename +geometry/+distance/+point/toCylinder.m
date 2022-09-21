@@ -12,7 +12,7 @@ function d = toCylinder(P,RADIUS,PTS,ISINF)
     if nargin<4 ; ISINF = false(1,1,size(RADIUS,3)) ; end
     
     % Distance to infinite cylinders
-    d = pkg.geometry.distance.toLine(P,PTS(1,:,:),PTS(2,:,:))-RADIUS ; % [nP 1 nC]
+    d = pkg.geometry.distance.point.toLine(P,PTS(1,:,:),PTS(2,:,:))-RADIUS ; % [nP 1 nC]
     
     if all(ISINF) % All cylinders are infinite ?
         return ;
@@ -28,8 +28,8 @@ function d = toCylinder(P,RADIUS,PTS,ISINF)
     
     % Distance to top/bottom faces planes
     AX = P2-P1 ; % oriented cylinder axis [1 nCoord nC]
-    df1 = pkg.geometry.distance.toPlane(P,P1,-AX) ; % [nP 1 nCf]
-    df2 = pkg.geometry.distance.toPlane(P,P2,AX) ; % [nP 1 nCf]
+    df1 = pkg.geometry.distance.point.toPlane(P,P1,-AX) ; % [nP 1 nCf]
+    df2 = pkg.geometry.distance.point.toPlane(P,P2,AX) ; % [nP 1 nCf]
     
     % Which point is inside which feature ? [infiniteCylinder, facePlane1, facePlane2]
     isin = [dc df1 df2]<=0 ; % [nP 3 nCf]
@@ -65,7 +65,7 @@ function test
     P = 2*(rand(nP,3)-0.5)*2.*[1 1 1] + [.5 .5 .5] ;
     
     profile on
-    tic ; d = pkg.geometry.distance.toCylinder(P,R,PTS,false) ; toc
+    tic ; d = pkg.geometry.distance.point.toCylinder(P,R,PTS,false) ; toc
     profile off
     
     cla ; axis equal

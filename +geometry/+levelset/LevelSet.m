@@ -187,7 +187,30 @@ methods
     end
 end
 
-
+%% GEOMETRICAL OPERATIONS
+    methods
+        function this = move(this,v)
+        % Move the levelset with a translation vector v
+            this.Function = @(p)this.Function(p-v) ;
+            this.BoundingBox = this.BoundingBox + v ;
+            for ee = 1:numel(this.EdgeFcns)
+                this.EdgeFcns{ee} = @(t)this.EdgeFcns{ee}(t) + v ;
+            end
+            this.Kinks = this.Kinks + v ;
+        end
+        
+        function this = rotate(this,theta)
+        % Rotate the levelset with an angle theta arounf the origin
+            R = [cos(theta) sin(theta) ; -sin(theta) cos(theta)] ;
+            this.Function = @(p)this.Function(p*R') ;
+            this.BoundingBox = this.BoundingBox*R ;
+            this.BoundingBox = [min(this.BoundingBox,[],1) ; max(this.BoundingBox,[],1)] ;
+            for ee = 1:numel(this.EdgeFcns)
+                this.EdgeFcns{ee} = @(t)this.EdgeFcns{ee}(t)*R ;
+            end
+            this.Kinks = this.Kinks*R ;
+        end
+    end
 %% GEOMETRY UTILS
     methods
         function [in,on] = inside(this,P,dtol) 

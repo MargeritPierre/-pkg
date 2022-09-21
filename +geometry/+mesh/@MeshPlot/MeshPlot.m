@@ -31,7 +31,6 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         % Global Color
             Color
         % Mesh Faces
-            CData % face data
             FaceColor
             FaceAlpha
         % Mesh Edges
@@ -46,7 +45,12 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
             NodeStyle
             NodeSizeMultiplier
     end
+    properties
+    % Color data
+        CData
+    end
     properties (Hidden)
+    % Graphical objects handles
         Nodes
         Edges
         Faces
@@ -55,6 +59,15 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         Frames
         Normals
         Labels
+    % Plot vertices
+        Vertices
+    % Special feature indices
+        EdgeIdx % with NaNs at the end)
+        FaceTable pkg.geometry.mesh.elements.ElementTable % may be modified to represent simple patches
+    % Visible feature indices
+        VisibleNodeIdx
+        VisibleEdgeIdx
+        VisibleFaceIdx
     end
     
 %% CONSTRUCTOR/DESTRUCTOR
@@ -106,33 +119,83 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         end
     % Changing the face color
         function cdata = get.CData(this)
-            cdata = this.Faces.FaceVertexCData ;
+            cdata = this.CData ; %this.Faces.FaceVertexCData ;
         end
         function set.CData(this,cdata)
             cdata = full(cdata) ;
-            if ischar(cdata) % 'none' or color string
-                this.Faces.FaceColor = cdata ;
-                this.Faces.FaceVertexCData = [] ;
-            else
-                switch size(cdata,1)
-                    case this.Mesh.nNodes % nodal values
-                        this.Faces.FaceColor = 'interp' ;
-                        this.Faces.FaceVertexCData = cdata ;
-                    case this.Mesh.nElems % element values
-                        this.Faces.FaceColor = 'flat' ;
-                        this.Faces.FaceVertexCData = cdata ;
-                    otherwise % try on gauss points
-                        [ee,~,ie] = this.Mesh.integration ;
-                        if size(cdata,1)~=numel(ie) ; error('Wrong shape for CData') ; end
-                        this.Faces.FaceColor = 'interp' ;
-                        this.Faces.FaceVertexCData = this.Mesh.interpMat(ee,ie)\cdata ;
-                end
+            switch size(cdata,1)
+                case 0 % no color
+                    this.Faces.FaceVertexCData = [] ;
+                    this.CData = [] ; return ;
+                case 1 % uniform color, RBG, or string
+                    this.Faces.FaceColor = cdata ;
+                case this.Mesh.nNodes % nodal values
+                    this.Faces.FaceColor = 'interp' ;
+                case this.Mesh.nElems % element values
+                    this.Faces.FaceColor = 'flat' ;
+                    this.Faces.FaceVertexCData = cdata ;
+                    this.CData = [] ; return ;
+                otherwise % try on gauss points
+                    [ee,~,ie] = this.Mesh.integration ;
+                    if size(cdata,1)~=numel(ie) ; error('Wrong shape for CData') ; end
+                    this.Faces.FaceColor = 'interp' ;
+                    cdata = this.Mesh.interpMat(ee,ie)\cdata ;
             end
+            this.CData = cdata ;
+            this.update('CData') ;
         end
     % Feature visibility
         function set.VisibleNodes(this,opt) ; this.VisibleNodes = char(opt) ; update(this) ; end
         function set.VisibleEdges(this,opt) ; this.VisibleEdges = char(opt) ; update(this) ; end
         function set.VisibleFaces(this,opt) ; this.VisibleFaces = char(opt) ; update(this) ; end
+        function setVisibleNodeIdx(this)
+            switch this.VisibleNodes
+                case 'all'
+                    this.VisibleNodeIdx = true(this.Mesh.nNodes,1) ;
+                case 'outer'
+                    this.VisibleNodeIdx = this.Mesh.outerNodes ;
+                case 'boundary'
+                    this.VisibleNodeIdx = this.Mesh.boundaryNodes ;
+                case 'end'
+                    this.VisibleNodeIdx = this.Mesh.endNodes ;
+                otherwise
+                    this.VisibleNodeIdx = false(this.Mesh.nNodes,1) ;
+            end
+        end
+        function setVisibleEdgeIdx(this)
+            switch this.VisibleEdges
+                case 'all'
+                    this.VisibleEdgeIdx = true(this.Mesh.nEdges,1) ;
+                case 'outer'
+                    this.VisibleEdgeIdx = this.Mesh.outerEdges ;
+                case 'boundary'
+                    this.VisibleEdgeIdx = this.Mesh.boundaryEdges ;
+                otherwise
+                    this.VisibleEdgeIdx = false(this.Mesh.nEdges,1) ;
+            end
+        end
+        function setVisibleFaceIdx(this)
+        % Empty face list ?
+            if isempty(this.Mesh.Faces)
+                this.VisibleFaceIdx = false(this.Mesh.nFaces,1) ;
+                this.FaceTable = [] ;
+                return ;
+            end
+        % Set visible face indices
+            switch this.VisibleFaces
+                case 'all'
+                    this.VisibleFaceIdx = true(this.Mesh.nFaces,1) ;
+                case 'outer'
+                    this.VisibleFaceIdx = this.Mesh.outerFaces ;
+                otherwise
+                    this.VisibleFaceIdx = false(this.Mesh.nFaces,1) ;
+            end
+        % Compute the element table of visible faces
+            this.FaceTable = this.Mesh.Faces.subpart(this.VisibleFaceIdx) ;
+            if ~isa(this.Mesh.Elems.Types,'pkg.geometry.mesh.elements.base.BaseElement')
+                this.FaceTable = this.FaceTable.simplex ; % to display complicated elements
+            end
+        end
     % Feature highlighting
         function set.HighlightEndNodes(this,opt) ; this.HighlightEndNodes = logical(opt) ; update(this) ; end
         function set.HighlightBoundaryEdges(this,opt) ; this.HighlightBoundaryEdges = logical(opt) ; update(this) ; end
@@ -276,184 +339,180 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
                             ) ;
         end
         
-        function update(this)
+        function update(this,what)
         % Object updating function
             if ~this.Initialized ; return ; end
             if isempty(this.Mesh) ; return ; end
+            if nargin<2 ; what = 'all' ; end
+            if isempty(what) ; return ; end
+            toUpdate = @(arg)any(ismember(arg,what)) ;
             % Add dummy nodes for display purposes
-                vertices = this.NodeCoordinates ;
-                vertices(end+1,:) = NaN ;
-                edgIdx = [this.Mesh.Edges.indicesWithNaNs ones(this.Mesh.nEdges,1).*this.Mesh.nNodes+1] ;
+                if toUpdate({'all','Nodes','Vertices'})
+                    this.Vertices = this.NodeCoordinates ;
+                    this.Vertices(end+1,:) = NaN ;
+                end
             % Faces
-                if ~isempty(this.Mesh.Faces)
-                    switch this.VisibleFaces
-                        case 'all'
-                            visibleFaces = true(this.Mesh.nFaces,1) ;
-                        case 'outer'
-                            visibleFaces = this.Mesh.outerFaces ;
-                        otherwise
-                            visibleFaces = false(this.Mesh.nFaces,1) ;
-                    end
-                    faces = this.Mesh.Faces.subpart(visibleFaces) ;
-                    if ~isa(this.Mesh.Elems.Types,'pkg.geometry.mesh.elements.base.BaseElement')
-                        faces = faces.simplex ; % to display complicated elements
-                    end
-                    this.setPatch(this.Faces,vertices,faces.indicesWithNaNs) ;
-                else
-                    visibleFaces = false(this.Mesh.nFaces,1) ;
+                if toUpdate({'all','Faces'}) 
+                    this.setVisibleFaceIdx ; 
+                end
+                if toUpdate({'all','Faces','Vertices','CData'}) 
+                    this.setPatch(this.Faces,this.Vertices,this.FaceTable.indicesWithNaNs,this.CData) ;
                 end
             % Edges
-                switch this.VisibleEdges
-                    case 'all'
-                        visibleEdges = true(this.Mesh.nEdges,1) ;
-                    case 'outer'
-                        visibleEdges = this.Mesh.outerEdges ;
-                    case 'boundary'
-                        visibleEdges = this.Mesh.boundaryEdges ;
-                    otherwise
-                        visibleEdges = false(this.Mesh.nEdges,1) ;
+                if toUpdate({'all','Edges'}) 
+                    this.EdgeIdx = [this.Mesh.Edges.indicesWithNaNs ones(this.Mesh.nEdges,1).*this.Mesh.nNodes+1] ;
+                    this.setVisibleEdgeIdx ;
                 end
-                this.setPatch(this.Edges,vertices,edgIdx(visibleEdges,:)) ;
+                if toUpdate({'all','Edges','Vertices'}) 
+                    this.setPatch(this.Edges,this.Vertices,this.EdgeIdx(this.VisibleEdgeIdx,:)) ;
+                end
             % Highlighted Edges
-                if this.HighlightBoundaryEdges
-                    highlightedEdges = this.Mesh.boundaryEdges ;
-                else
-                    highlightedEdges = [] ;
+                if toUpdate({'all','Edges'}) 
+                    if this.HighlightBoundaryEdges
+                        highlightedEdges = this.Mesh.boundaryEdges ;
+                    else
+                        highlightedEdges = [] ;
+                    end
                 end
-                this.setPatch(this.BoundaryEdges,vertices,edgIdx(highlightedEdges,:)) ;
+                if toUpdate({'all','Edges','Vertices'}) 
+                    this.setPatch(this.BoundaryEdges,this.Vertices,this.EdgeIdx(highlightedEdges,:)) ;
+                end
             % Nodes
-                switch this.VisibleNodes
-                    case 'all'
-                        visibleNodes = true(this.Mesh.nNodes,1) ;
-                    case 'outer'
-                        visibleNodes = this.Mesh.outerNodes ;
-                    case 'boundary'
-                        visibleNodes = this.Mesh.boundaryNodes ;
-                    case 'end'
-                        visibleNodes = this.Mesh.endNodes ;
-                    otherwise
-                        visibleNodes = false(this.Mesh.nNodes,1) ;
+                if toUpdate({'all','Nodes'}) 
+                    this.setVisibleNodeIdx ;
                 end
-                this.setPatch(this.Nodes,vertices(visibleNodes,:)) ;
+                if toUpdate({'all','Nodes','Vertices'}) 
+                    this.setPatch(this.Nodes,this.Vertices(this.VisibleNodeIdx,:)) ;
+                end
             % Highlighted Nodes
-                if this.HighlightEndNodes
-                    highlightedNodes = reshape(find(this.Mesh.endNodes),1,[]) ;
-                else
-                    highlightedNodes = [] ;
+                if toUpdate({'all','Nodes'})
+                    if this.HighlightEndNodes
+                        highlightedNodes = reshape(find(this.Mesh.endNodes),1,[]) ;
+                    else
+                        highlightedNodes = [] ;
+                    end
                 end
-                this.setPatch(this.EndNodes,vertices(highlightedNodes,:)) ;
+                if toUpdate({'all','Nodes','Vertices'})
+                    this.setPatch(this.EndNodes,this.Vertices(highlightedNodes,:)) ;
+                end
             % Frames
-                delete(this.Frames)
-                this.Frames = gobjects(0) ;
-                % Plot the frames
-                    for ii = 1:numel(this.ShowFrames)
-                        switch this.ShowFrames{ii}
-                            case 'Nodes'
-                                origin = padarray(this.Mesh.Nodes,[0 3*this.Mesh.nCoord],0,'post') ;
-                                frames = this.Mesh.nodeNormals ;
-                            otherwise
-                                origin = padarray(this.Mesh.centroid(this.ShowFrames{ii}),[0 3*this.Mesh.nCoord],0,'post') ;
-                                frames = permute(this.Mesh.getFrames(this.ShowFrames{ii}),[3 2 1]) ;
+                if toUpdate({'all','Frames','Vertices'})
+                    delete(this.Frames)
+                    this.Frames = gobjects(0) ;
+                    % Plot the frames
+                        for ii = 1:numel(this.ShowFrames)
+                            switch this.ShowFrames{ii}
+                                case 'Nodes'
+                                    origin = padarray(this.Mesh.Nodes,[0 3*this.Mesh.nCoord],0,'post') ;
+                                    frames = this.Mesh.nodeNormals ;
+                                otherwise
+                                    origin = padarray(this.Mesh.centroid(this.ShowFrames{ii}),[0 3*this.Mesh.nCoord],0,'post') ;
+                                    frames = permute(this.Mesh.getFrames(this.ShowFrames{ii}),[3 2 1]) ;
+                            end
+                            nVec = size(frames,3) ;
+                            colors = linspecer(nVec) ;
+                            for vv = 1:nVec
+                                this.Frames(end+1) = quiver3( ...
+                                                        origin(:,1),origin(:,2),origin(:,3) ...
+                                                        ,frames(:,1,vv),frames(:,2,vv),frames(:,3,vv) ...
+                                                        ,'Color',colors(vv,:) ...
+                                                        ,'Parent',this.GraphicGroup ...
+                                                        ) ;
+                            end
                         end
-                        nVec = size(frames,3) ;
-                        colors = linspecer(nVec) ;
-                        for vv = 1:nVec
-                            this.Frames(end+1) = quiver3( ...
+                    % Set common properties
+                        set(this.Frames ...
+                            ,'LineWidth',1 ...
+                            ,'MaxHeadSize',0.05 ...
+                            ,'AutoScaleFactor',0.15 ...
+                            ,'Parent',this.GraphicGroup ...
+                            ) ;
+                end
+            % Normals
+                if toUpdate({'all','Normals','Vertices'})
+                    delete(this.Normals)
+                    this.Normals = gobjects(0) ;
+                    % Plot the frames
+                        for ii = 1:numel(this.ShowNormals)
+                            switch this.ShowNormals{ii}
+                                case 'Nodes'
+                                    origin = padarray(this.Mesh.Nodes,[0 3-this.Mesh.nCoord],0,'post') ;
+                                    normals = this.Mesh.nodeNormals ;
+                                case 'BoundaryNodes'
+                                    [~,~,normals,no] = this.Mesh.boundaryNormals ;
+                                    origin = padarray(this.Mesh.Nodes(no,:),[0 3-this.Mesh.nCoord],0,'post') ;
+                                case 'BoundaryEdges'
+                                    [normals,ed] = this.Mesh.boundaryNormals ;
+                                    origin = padarray(this.Mesh.centroid(this.Mesh.Edges.subpart(ed)),[0 3-this.Mesh.nCoord],0,'post') ;
+                                otherwise
+                                    origin = padarray(this.Mesh.centroid(this.ShowNormals{ii}),[0 3-this.Mesh.nCoord],0,'post') ;
+                                    normals = this.Mesh.getNormals(this.ShowNormals{ii}) ;
+                            end
+                            this.Normals(end+1) = quiver3( ...
                                                     origin(:,1),origin(:,2),origin(:,3) ...
-                                                    ,frames(:,1,vv),frames(:,2,vv),frames(:,3,vv) ...
-                                                    ,'Color',colors(vv,:) ...
-                                                    ,'Parent',this.GraphicGroup ...
+                                                    ,normals(:,1),normals(:,2),normals(:,3) ...
                                                     ) ;
                         end
-                    end
-                % Set common properties
-                    set(this.Frames ...
-                        ,'LineWidth',1 ...
-                        ,'MaxHeadSize',0.05 ...
-                        ,'AutoScaleFactor',0.15 ...
-                        ,'Parent',this.GraphicGroup ...
-                        ) ;
-            % Normals
-                delete(this.Normals)
-                this.Normals = gobjects(0) ;
-                % Plot the frames
-                    for ii = 1:numel(this.ShowNormals)
-                        switch this.ShowNormals{ii}
-                            case 'Nodes'
-                                origin = padarray(this.Mesh.Nodes,[0 3-this.Mesh.nCoord],0,'post') ;
-                                normals = this.Mesh.nodeNormals ;
-                            case 'BoundaryNodes'
-                                [~,~,normals,no] = this.Mesh.boundaryNormals ;
-                                origin = padarray(this.Mesh.Nodes(no,:),[0 3-this.Mesh.nCoord],0,'post') ;
-                            case 'BoundaryEdges'
-                                [normals,ed] = this.Mesh.boundaryNormals ;
-                                origin = padarray(this.Mesh.centroid(this.Mesh.Edges.subpart(ed)),[0 3-this.Mesh.nCoord],0,'post') ;
-                            otherwise
-                                origin = padarray(this.Mesh.centroid(this.ShowNormals{ii}),[0 3-this.Mesh.nCoord],0,'post') ;
-                                normals = this.Mesh.getNormals(this.ShowNormals{ii}) ;
-                        end
-                        this.Normals(end+1) = quiver3( ...
-                                                origin(:,1),origin(:,2),origin(:,3) ...
-                                                ,normals(:,1),normals(:,2),normals(:,3) ...
-                                                ) ;
-                    end
-                % Set common properties
-                    set(this.Normals ...
-                        ,'Color','k' ...
-                        ,'LineWidth',1 ...
-                        ,'MaxHeadSize',0.05 ...
-                        ,'AutoScaleFactor',0.15 ...
-                        ,'Parent',this.GraphicGroup ...
-                        ) ;
-            % Labels (reinitialized each time...)
-                delete(this.Labels)
-                this.Labels = gobjects(0) ;
-                for ii = 1:numel(this.ShowLabels)
-                % Indices, positions, colors
-                    switch this.ShowLabels{ii}
-                        case 'Nodes'
-                            ind = find(visibleNodes) ;
-                            pos = this.Mesh.Nodes ;
-                            color = 'b' ;
-                        case 'Edges'
-                            ind = find(visibleEdges) ;
-                            pos = this.Mesh.centroid(this.Mesh.Edges) ;
-                            color = 'r' ;
-                        case 'Faces'
-                            ind = find(visibleFaces) ;
-                            pos = this.Mesh.centroid(this.Mesh.Faces) ;
-                            color = 'm' ;
-                        case 'Elems'
-                            ind = 1:this.Mesh.nElems ;
-                            pos = this.Mesh.centroid(this.Mesh.Elems) ;
-                            color = 'k' ;
-                    end
-                    if isempty(ind) ; continue ; end
-                % 3D position
-                    pos = [pos zeros(size(pos,1),3-size(pos,2))] ;
-                % Merge superimposed indices
-                    [pos,ia,~] = uniquetol(pos(ind,:),'ByRows',true,'OutputAllIndices',true) ;
-                    ind = cellfun(@(ii)ind(ii),ia,'UniformOutput',false) ;
-                % Label text
-                    txt = cellfun(@num2str,ind,'UniformOutput',false) ;
-                % Create label
-                    lbl = text(pos(:,1),pos(:,2),pos(:,3),txt) ;
-                % Set specific properties
-                    set(lbl,'Color',color) ;
-                % Add to the list
-                    this.Labels = [this.Labels ; lbl(:)] ;
+                    % Set common properties
+                        set(this.Normals ...
+                            ,'Color','k' ...
+                            ,'LineWidth',1 ...
+                            ,'MaxHeadSize',0.05 ...
+                            ,'AutoScaleFactor',0.15 ...
+                            ,'Parent',this.GraphicGroup ...
+                            ) ;
                 end
-                % Set common properties
-                    set(this.Labels,'Parent',this.GraphicGroup) ;
-                    set(this.Labels,'FontName','consolas','interpreter','tex') ;
-                    set(this.Labels,'FontSize',12,'FontWeight','bold') ;
+            % Labels (reinitialized each time...)
+                if toUpdate({'all','Labels','Vertices'})
+                    delete(this.Labels)
+                    this.Labels = gobjects(0) ;
+                    for ii = 1:numel(this.ShowLabels)
+                    % Indices, positions, colors
+                        switch this.ShowLabels{ii}
+                            case 'Nodes'
+                                ind = find(this.VisibleNodeIdx) ;
+                                pos = this.Mesh.Nodes ;
+                                color = 'b' ;
+                            case 'Edges'
+                                ind = find(this.VisibleEdgeIdx) ;
+                                pos = this.Mesh.centroid(this.Mesh.Edges) ;
+                                color = 'r' ;
+                            case 'Faces'
+                                ind = find(this.VisibleFaceIdx) ;
+                                pos = this.Mesh.centroid(this.Mesh.Faces) ;
+                                color = 'm' ;
+                            case 'Elems'
+                                ind = 1:this.Mesh.nElems ;
+                                pos = this.Mesh.centroid(this.Mesh.Elems) ;
+                                color = 'k' ;
+                        end
+                        if isempty(ind) ; continue ; end
+                    % 3D position
+                        pos = [pos zeros(size(pos,1),3-size(pos,2))] ;
+                    % Merge superimposed indices
+                        [pos,ia,~] = uniquetol(pos(ind,:),'ByRows',true,'OutputAllIndices',true) ;
+                        ind = cellfun(@(ii)ind(ii),ia,'UniformOutput',false) ;
+                    % Label text
+                        txt = cellfun(@num2str,ind,'UniformOutput',false) ;
+                    % Create label
+                        lbl = text(pos(:,1),pos(:,2),pos(:,3),txt) ;
+                    % Set specific properties
+                        set(lbl,'Color',color) ;
+                    % Add to the list
+                        this.Labels = [this.Labels ; lbl(:)] ;
+                    end
+                    % Set common properties
+                        set(this.Labels,'Parent',this.GraphicGroup) ;
+                        set(this.Labels,'FontName','consolas','interpreter','tex') ;
+                        set(this.Labels,'FontSize',12,'FontWeight','bold') ;
+                end
         end
     end
     
     
 %% UNIQUE INDICES (DATA REDUCTION)
     methods
-        function setPatch(~,pa,vertices,faces)
+        function setPatch(~,pa,vertices,faces,cdata)
         % Set a patch vertices and faces while reducing strored data
             if nargin<4 % show vertices
                 faces = 1:size(vertices,1) ;
@@ -465,6 +524,9 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
             end
             vertices = padarray(vertices,[0 3-size(vertices,2)],0,'post') ;
             set(pa,'vertices',vertices,'faces',faces) ;
+        % Color data
+            if nargin<5 || isempty(cdata) ; return ; end
+            set(pa,'facevertexcdata',cdata(vv,:)) ;
         end
     end
 
