@@ -153,26 +153,38 @@ if optimize
     
     % OPTIMIZATION LOOP
         while optimize
-                
-            % Cost Functions
-                J = sparse(2*mesh.nNodes,1) ;   
-                H = sparse(2*mesh.nNodes,2*mesh.nNodes) ; 
-                
-                [rc,Jc,Hc] = edgeLengthCost ;
-                J = J + Jc ;
-                H = H + Hc ;
-                
-%                 [rc,Jc,Hc] = laplacianSmoothingCost ;
-%                 J = J + 0.1*Jc ;
-%                 H = H + 0.1*Hc ;
             
             % Kinematic Constraints
                 T = kinematicContraints ;
-                J = T'*J ;
-                H = T'*H*T ;
+                nDOF = size(T,2) ;
+                
+            % Cost Functions
+                J = sparse(nDOF,1) ;   
+                H = sparse(nDOF,nDOF) ; 
+                
+                [rc,drc_dx] = edgeLengthCost ;
+                drc_dx = drc_dx*T ;
+                J = J + drc_dx'*rc ;
+                H = H + drc_dx'*drc_dx ;
+                
+%                 [rc,drc_dx] = laplacianSmoothingCost ;
+%                 drc_dx = drc_dx*T ;
+%                 J = J + drc_dx'*rc ;
+%                 H = H + drc_dx'*drc_dx ;
                 
             % Displacement update
-                dp = deltat*T*(H\J) ;
+                if 0
+                    tol = 1e-1;
+                    maxIt = 10;
+                    options = [] ;
+                    options.type = 'nofill';
+                    options.michol = 'on';
+                    Lh = ichol(H);
+                    [dp,~] = pcg(H,J,tol,maxIt,Lh,Lh') ;
+                else
+                    dp = H\J ;
+                end
+                dp = deltat*T*dp ;
                 dp = reshape(dp,mesh.nNodes,mesh.nCoord) ;
                 mesh.Nodes = mesh.Nodes - dp ;
                 
@@ -340,7 +352,7 @@ end
     end
 
 
-    function [r,J,H] = edgeLengthCost
+    function [r,dr_dx] = edgeLengthCost
     % Edge Length difference
     % phi(x) = || Le(x) - Fs*fh(xm) ||²
     % Le(x) is the current edge length
@@ -359,13 +371,10 @@ end
             jj = repmat(double(mesh.Edges.NodeIdx),[1 2]) + [0 0 1 1]*mesh.nNodes ; % [nEdges 4]
             dL_dx = reshape(dx,mesh.nEdges,1,mesh.nCoord).*([-1 1]./L(:)) ; % [nEdges 2 2]
             dr_dx = sparse(ii(:),jj(:),dL_dx(:),mesh.nEdges,2*mesh.nNodes) ;
-        % G-N Matrices
-            J = dr_dx'*r ;
-            H = dr_dx'*dr_dx ;
     end
 
 
-    function [r,J,H] = laplacianSmoothingCost
+    function [r,dr_dx] = laplacianSmoothingCost
     % Laplacian smoothing
     % phi(x) = || x - Xc(x) ||²
     % Xc(x) is the mean of the attached triangle's barycenters
@@ -377,8 +386,6 @@ end
         Xc = Me*Mn*mesh.Nodes ;
         r = mesh.Nodes(:)-Xc(:) ;
         dr_dx = speye(2*mesh.nNodes) ;
-        J = dr_dx'*r ;
-        H = dr_dx'*dr_dx ;
     end
 
     function T = kinematicContraints
@@ -386,7 +393,7 @@ end
         % Get boundary nodes to constrain
             ibnd = [] ;
             if bndCons
-                ibnd = setdiff(find(mesh.boundaryNodes),1:nfix) ;
+                ibnd = find(mesh.boundaryNodes & (1:mesh.nNodes)'>nfix) ;
             end
         % Interior points only are free to move
             ifree = setdiff(1:mesh.nNodes,[1:nfix,ibnd(:)']) ;

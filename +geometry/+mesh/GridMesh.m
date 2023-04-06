@@ -33,7 +33,7 @@ methods
         if nargin>1
             if isinteger(varargin{1}) % mesh = GridMesh(...,N)
                 Ne = double(varargin{1}) ;
-            else
+            else % mesh = GridMesh(...,dx)
                 dx = varargin{1} ;
                 Ne = ceil(range(domain,1)./dx) ;
             end
@@ -55,10 +55,10 @@ methods
             X = reshape(X,[],nCoord) ;
         % Element indices
             Elems = 1 ;
-            for cc = 1:nCoord
+            for cc = find(Ne>0)
                 ic = (0:Ne(cc)-1)' + [0 1] ;
                 Elems = repmat(Elems,Ne(cc),2) + prod(n(1:cc-1))*repelem(ic,size(Elems,1),size(Elems,2)) ;
-                if cc==2
+                if sum(Ne(1:cc)>0)==2
                     Elems = Elems(:,[1 2 4 3]) ;
                 end
             end

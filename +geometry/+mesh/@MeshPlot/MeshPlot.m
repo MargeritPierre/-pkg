@@ -107,6 +107,13 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
             this.NodeCoordinates = coord ;
             this.update ;
         end
+        function coord = get.NodeCoordinates(this)
+        % Reset deformation if the mesh has changed !
+            if size(this.NodeCoordinates,1)~=this.Mesh.nNodes
+                this.NodeCoordinates = this.Mesh.Nodes ;
+            end
+            coord = this.NodeCoordinates ;
+        end
     % Mesh deformation (nodal displacements)
         function u = get.Deformation(this)
             pad = size(this.NodeCoordinates,2)-this.Mesh.nCoord ;
@@ -131,7 +138,7 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
                     this.Faces.FaceColor = cdata ;
                 case this.Mesh.nNodes % nodal values
                     this.Faces.FaceColor = 'interp' ;
-                case this.Mesh.nElems % element values
+                case this.Mesh.nElems % elem values
                     this.Faces.FaceColor = 'flat' ;
                     this.Faces.FaceVertexCData = cdata ;
                     this.CData = [] ; return ;

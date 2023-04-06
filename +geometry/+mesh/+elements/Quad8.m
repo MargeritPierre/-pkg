@@ -66,15 +66,19 @@ classdef Quad8 < pkg.geometry.mesh.elements.AbstractElement
     methods (Static)
         function [p,w] = intScheme(int)
         % Return an integration scheme
+        % see p.9 of https://www.meil.pw.edu.pl/zwmik/content/download/50088/264514/file/FEM_1_9_8node_2D.pdf
             switch int
                 case 'full' % 8-point scheme
-                    p = ([-1 -1 ; 1 -1 ; 1 1 ; -1 1; 0 -1; 1 0; 0 1; -1 0; 0 0]*0.774596669241483+1)/2 ;
-                    w = 1/4 * [25 ; 25 ; 25 ; 25 ; 40 ; 40 ; 40 ; 40 ; 64]/81 ;
+                    p = [-1 -1 ; 1 -1 ; 1 1 ; -1 1; 0 -1; 1 0; 0 1; -1 0; 0 0]*sqrt(.6) ;
+                    w = [25 ; 25 ; 25 ; 25 ; 40 ; 40 ; 40 ; 40 ; 64]/81 ;
                 case 'reduced' % 4-point scheme
-                    p = ([-1 -1 ; 1 -1 ; 1 1 ; -1 1]/sqrt(3)+1)/2 ;
-                    w = 1/4 * [1 ; 1 ; 1 ; 1 ] ;
+                    p = [-1 -1 ; 1 -1 ; 1 1 ; -1 1]/sqrt(3) ;
+                    w = [1 ; 1 ; 1 ; 1 ] ;
                 otherwise ; error('Integration scheme not supported') ;
             end
+        % Coordinate change
+            p = .5*(p+1) ;
+            w = .25*w ;
         end
     end
     methods

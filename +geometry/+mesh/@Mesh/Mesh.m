@@ -1375,7 +1375,7 @@ methods
         mesh = simplex(this) ;
     % Triangles to quads
         % Find triangles
-            isTri = isa(mesh.Elems.Types,'pkg.geometry.mesh.elements.base.Triangle') ;
+            isTri = arrayfun(@(type)isa(type,'pkg.geometry.mesh.elements.base.Triangle'),mesh.Elems.Types) ;
             isTri = ismember(mesh.Elems.TypeIdx,find(isTri)) ;
             tri = find(isTri) ;
         % Attached interior edges
@@ -1423,7 +1423,7 @@ methods
     % Join all elements
         mesh.Elems = [mesh.Elems.subpart(tri) quads] ;
     % Sort elements
-        mesh.sortElems ;
+        if mesh.isPlanar ; mesh.sortElems ; end
     end
 end
 
@@ -1460,9 +1460,59 @@ methods
     % Write the file
         stlwrite(tri,filename) ;
     end
+    
+    function laserCut(this,filename,units,edges,linewidth)
+    % Export the mesh into a laser-cut-suitable file
+        if ~this.isPlanar() ; error('The mesh must be planar') ; end
+        if nargin<2 || isempty(filename) ; filename = "LaserCutMesh_" + datestr(clock,'yyyymmdd_hhMMss') ; end
+        if nargin<3 || isempty(units) ; units = 'm' ; end
+        if nargin<4 || isempty(edges) ; edges = true ; end
+        if nargin<5 || isempty(linewidth) ; linewidth = .01 ; end
+    % Initialize a new figure
+        fig = figure() ;
+        ax = axes(fig) ;
+        axis(ax,'off','equal')
+        ax.XLim = [min(this.Nodes(:,1)) max(this.Nodes(:,1))]+.05*[-1 1]*range(this.Nodes(:,1)) ;
+        ax.YLim = [min(this.Nodes(:,2)) max(this.Nodes(:,2))]+.05*[-1 1]*range(this.Nodes(:,1)) ;
+    % Engrave all Mesh Edges
+        if edges
+            this.plot('Parent',ax ...
+                        ,'VisibleFaces','none'...
+                        ,'VisibleEdges','all'...
+                        ,'EdgeColor','r'...
+                        ,'EdgeWidth',linewidth...
+                        ,'HighlightBoundaryEdges',false...
+                     ) ;
+        end
+    % Cut boundary edges
+        [~,bndCrv] = this.boundaryCurves ;
+        for cc = 1:numel(bndCrv)
+            X = this.Nodes(bndCrv{cc},:) ;
+        % Is the curve outer or inner ?
+            dX = sum(diff(X,1,1).*[1 1i],2) ;
+            dX = dX./abs(dX) ;
+            ang = imag(log(dX./circshift(dX,1))) ;
+            outer = sum(ang)>0 ;
+        % Plot the curve
+            plot(ax,X(:,1),X(:,2) ...
+                ,'color', char('g'*outer + 'b'*~outer) ...
+                ,'linewidth', linewidth ...
+                ) ;
+        end
+    % Export the axes to PDF with the right size
+        %ax2pdf(filename,ax,units) ;
+        ax2svg(filename,ax,units) ;
+    % Close the figure
+        close(fig) ;
+    end
 end
 methods (Static)
     function mesh = stlread(filename)
+    if nargin<1 
+        [file,path] = uigetfile('*.stl','Select a STL file to load') ; 
+        if path==0 ; return ; end
+        filename = [path file] ;
+    end
     % Import a STL file
         TR = stlread(filename) ;
         tri = pkg.geometry.mesh.elements.base.Triangle ;

@@ -30,7 +30,7 @@ methods
     %   - ON: elements on the slice (pkg.geometry.mesh.elements.ElementTable)
     %   - OUT: elements outside (pkg.geometry.mesh.elements.ElementTable)
     % in the ElementTables, NodeIdx>this.nNodes denote edges indices
-    % (used when the slice cross an edge)
+    % (used when the slice crosses an edge)
         import pkg.geometry.mesh.elements.ElementTable
         S = repmat(struct('Test',[],'IN',[],'ON',[],'OUT',[]),[0 0]) ; % empty structure
     % Element Types
@@ -47,7 +47,7 @@ methods
     % Inject tests in the structure
         testsCells = num2cell(tests,2) ;
         [S(1:numel(testsCells)).Test] = deal(testsCells{:}) ;
-    % Trivial cases: the element is in/on/out -> all nodes have the same signe boolean)
+    % Trivial cases: the element is in/on/out -> all nodes have the same signed boolean)
         elem = ElementTable('Types',this,'Indices',[1 1:this.nNodes]) ;
         [S(all(nodeTests==-1,2)).IN] = deal(elem) ;
         [S(all(nodeTests==0,2)).ON] = deal(elem) ;
@@ -55,27 +55,27 @@ methods
     % Non-trivial cases: we create a mesh of simplices from nodes with the same status
         nonTrivial = find(range(nodeTests,2)>0) ; nNT = numel(nonTrivial) ;
         if nNT==0 ; return ; end
-        % Logical indexing
-            nodON = nodeTests(nonTrivial,:)==0 ;
-            nodIN = nodeTests(nonTrivial,:)<0 ;
-            nodOUT = nodeTests(nonTrivial,:)>0 ;
-            edgCross = crossEdg(nonTrivial,:) ;
-            idxAll = [true(nNT,this.nNodes) edgCross] ;
-        % Simplex mesh
-            if this.nDims==1 % 1D BAR elements
-            % Just make a mesh from the two end nodes and the central point
-                meshes = repmat({[1 3 ; 3 2]},[nNT 1]) ;
-            else
-            % Node coordinates for the delaunay mesh
-                Ne = this.NodeLocalCoordinates ;
-                Ne = [Ne ; this.Edges.meanDataAtIndices(Ne)] ; % edd "edge centroids"
-            % Delaunay mesh corresponding to unique cases
-                [~,ia,ic] = unique(edgCross,'rows') ;
-                NE = cellfun(@(ii)Ne(ii,:),num2cell(idxAll(ia,:),2),'UniformOutput',false) ;
-                meshes = cellfun(@delaunay,NE,'UniformOutput',false) ;
-            % Spread on non-unique cases
-                meshes = meshes(ic) ;
-            end
+    % Logical indexing
+        nodON = nodeTests(nonTrivial,:)==0 ;
+        nodIN = nodeTests(nonTrivial,:)<0 ;
+        nodOUT = nodeTests(nonTrivial,:)>0 ;
+        edgCross = crossEdg(nonTrivial,:) ;
+        idxAll = [true(nNT,this.nNodes) edgCross] ;
+    % Simplex mesh
+        if this.nDims==1 % 1D BAR elements
+        % Just make a mesh from the two end nodes and the central point
+            meshes = repmat({[1 3 ; 3 2]},[nNT 1]) ;
+        else
+        % Node coordinates for the delaunay mesh
+            Ne = this.NodeLocalCoordinates ;
+            Ne = [Ne ; this.Edges.meanDataAtIndices(Ne)] ; % add "edge centroids"
+        % Delaunay mesh corresponding to unique edge crossing cases
+            [~,ia,ic] = unique(edgCross,'rows') ;
+            NE = cellfun(@(ii)Ne(ii,:),num2cell(idxAll(ia,:),2),'UniformOutput',false) ;
+            meshes = cellfun(@delaunay,NE,'UniformOutput',false) ;
+        % Spread on non-unique cases
+            meshes = meshes(ic) ;
+        end
     % Create the element tables
         for cc = 1:nNT
         % Retrieve global indices

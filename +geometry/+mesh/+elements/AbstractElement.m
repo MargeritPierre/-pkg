@@ -419,7 +419,7 @@ methods
     % Plot the slice cases implemented for the element
         if nargin<2 ; fig = gcf ; end
         S = this.sliceCases ;
-        if nargin<3 ; cases = 1:min(numel(S),30) ; end
+        if nargin<3 ; cases = 1:min(numel(S),100) ; end
         if max(cases)>numel(S) ; error('Invalid cases queried.') ; end
         nCases = numel(cases) ;
         nAx = ceil(sqrt(nCases)) ; nAy = ceil(nCases/nAx) ;
@@ -427,6 +427,10 @@ methods
         E = this.localCoordinatesIn3D ;
         E = [E ; this.Edges.meanDataAtIndices(E)] ; % add edge centroids
         clrmp = padarray(linspecer(3),10,'replicate') ; jet(101) ;
+        parts = {'IN','ON','OUT'} ;
+        shiftE = 1.1*[1 0 0 ; 1 -1 0 ; 0 -1 0] ;
+        partColors = clrmp([1 ceil(end/2) end],:) ;
+        faceAlpha = 0.5 ;
         refMesh = this.mesh ;
         for cc = cases(:)'
         % New axes
@@ -440,11 +444,8 @@ methods
             H.VisibleFaces = 'all' ;
             H.Faces.FaceColor = 'interp' ;
             H.Faces.FaceVertexCData = reshape(S(cc).Test(1:this.nNodes),[],1) ;
+            H.Faces.FaceAlpha = faceAlpha ;
         % Show inside, onside, outside meshes
-            parts = {'IN','ON','OUT'} ;
-            shiftE = 1.1*[1 0 0 ; 1 -1 0 ; 0 -1 0] ;
-            partColors = clrmp([1 ceil(end/2) end],:) ;
-            faceAlpha = 0.5 ;
             for pp = 1:numel(parts)
                 refMesh.Nodes = E(1:this.nNodes,:) + shiftE(pp,:) ;
                 h = plot(refMesh,'VisibleFaces','none','HighlightBoundaryEdges',false) ;
@@ -459,6 +460,7 @@ methods
                         Hp.Edges.EdgeColor = partColors(pp,:) ;
                         %Hp.Nodes.MarkerEdgeColor = partColors(pp,:) ;
                         Hp.BoundaryEdges.EdgeColor = partColors(pp,:) ;
+                        Hp.ShowNormals = 'Faces' ; Hp.Normals.AutoScaleFactor = .9 ;
                 end
             end
         end
@@ -468,6 +470,7 @@ methods
         set(ax,'clim',[-1 1]) ;
         axis(ax,'off') ;
         axis(ax,'equal') ;
+        axis(ax,'tight') ;
         fig.UserData.hlink = linkprop(ax,'view') ;
     end
 end

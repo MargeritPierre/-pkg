@@ -4,6 +4,7 @@ classdef Ellipse < pkg.geometry.levelset.LevelSet
 methods
     function this = Ellipse(center,semiaxes,rotation)
     % Class construtor
+        if nargin<3 ; rotation = 0 ; end
         this = this@pkg.geometry.levelset.LevelSet() ;
         this.Function = @(p)pkg.geometry.distance.point.toEllipse(p,center,semiaxes,rotation) ;
         this.Kinks = [] ;

@@ -99,8 +99,8 @@ end
 methods
     function M = feat2node(this,M)
     % Adjust the size of the connectivity matrix to match the number of nodes
-        if ~ismethod(this,'nNodes') ; return ; end
-        M(end+1:this.nNodes,:) = 0 ; 
+        %if ~ismethod(this,'nNodes') ; return ; end
+        try ; M(end+1:this.nNodes,:) = 0 ; end
     end
     function M = elem2node(this,varargin)
     % Elements to Nodes [nNodes nElems]: nod(:) = M*elmt(:)

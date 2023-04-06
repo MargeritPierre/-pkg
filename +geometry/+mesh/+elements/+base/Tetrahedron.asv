@@ -82,79 +82,77 @@ methods
     % in the ElementTables, NodeIdx>this.nNodes denote edges indices
     % (used when the slice crosses an edge)    
     % ON.Faces's normals MUST BE ORIENTED OUTSIDE
-        %warning('using tetrahedron reducedSliceCases fcn');
-        tet = this ;
-        prism = pkg.geometry.mesh.elements.base.Prism ;
-        tri = pkg.geometry.mesh.elements.base.Triangle ;
-        quad = pkg.geometry.mesh.elements.base.Quadrangle ;
+        warning('in the tetrahedron reducedSliceCases fcn');
+        import pkg.geometry.mesh.elements.ElementTable
+        import pkg.geometry.mesh.elements.base.*
         complex2ind = @(ii) real(ii) + imag(ii) + double(logical(imag(ii)))*this.nNodes ;
-        eltbl = @(type,ii) pkg.geometry.mesh.elements.ElementTable('Types',type,'Indices',padarray(complex2ind(ii),[0 1],1,'pre')) ;
+        eltbl = @(type,ii) ElementTable('Types',type,'Indices',padarray(complex2ind(ii),[0 1],1,'pre')) ;
         S = repmat(struct('Test',[],'IN',[],'ON',[],'OUT',[]),[0 0]) ; % empty slice structure
     % All Nodes OUT
         S(end+1).Test = [1 1 1 1] ;
-        S(end).OUT = eltbl(tet,1:this.nNodes) ;
+        S(end).OUT = eltbl(this,1:this.nNodes) ;
     % All Nodes IN
         S(end+1).Test = -[1 1 1 1] ;
-        S(end).IN = eltbl(tet,1:this.nNodes) ;
+        S(end).IN = eltbl(this,1:this.nNodes) ;
     % One Node IN
         S(end+1).Test = [-1 1 1 1] ;
-            S(end).IN = eltbl(tet,[1 1i 3i 4i]) ;
-            S(end).OUT = eltbl(prism,[1i 3i 4i 2 3 4]) ;
-            S(end).ON = eltbl(tri,[1i 3i 4i]) ;
+            S(end).IN = eltbl(this,[1 1i 3i 4i]) ;
+            S(end).OUT = eltbl(Prism,[1i 3i 4i 2 3 4]) ;
+            S(end).ON = eltbl(Triangle,[1i 3i 4i]) ;
         S(end+1).Test = [1 -1 1 1] ;
-            S(end).IN = eltbl(tet,[2 1i 5i 2i]) ;
-            S(end).OUT = eltbl(prism,[1i 5i 2i 1 4 3]) ;
-            S(end).ON = eltbl(tri,[1i 5i 2i]) ;
+            S(end).IN = eltbl(this,[2 1i 5i 2i]) ;
+            S(end).OUT = eltbl(Prism,[1i 5i 2i 1 4 3]) ;
+            S(end).ON = eltbl(Triangle,[1i 5i 2i]) ;
         S(end+1).Test = [1 1 -1 1] ;
-            S(end).IN = eltbl(tet,[3 2i 6i 3i]) ;
-            S(end).OUT = eltbl(prism,[2i 6i 3i 2 4 1]) ;
-            S(end).ON = eltbl(tri,[2i 6i 3i]) ;
+            S(end).IN = eltbl(this,[3 2i 6i 3i]) ;
+            S(end).OUT = eltbl(Prism,[2i 6i 3i 2 4 1]) ;
+            S(end).ON = eltbl(Triangle,[2i 6i 3i]) ;
         S(end+1).Test = [1 1 1 -1] ;
-            S(end).IN = eltbl(tet,[4 4i 6i 5i]) ;
-            S(end).OUT = eltbl(prism,[4i 6i 5i 1 3 2]) ;
-            S(end).ON = eltbl(tri,[4i 6i 5i]) ;
+            S(end).IN = eltbl(this,[4 4i 6i 5i]) ;
+            S(end).OUT = eltbl(Prism,[4i 6i 5i 1 3 2]) ;
+            S(end).ON = eltbl(Triangle,[4i 6i 5i]) ;
     % One Node OUT
         S(end+1).Test = [1 -1 -1 -1] ;
-            S(end).OUT = eltbl(tet,[1 1i 3i 4i]) ;
-            S(end).IN = eltbl(prism,[1i 3i 4i 2 3 4]) ;
-            S(end).ON = eltbl(tri,[1i 4i 3i]) ;
+            S(end).OUT = eltbl(this,[1 1i 3i 4i]) ;
+            S(end).IN = eltbl(Prism,[1i 3i 4i 2 3 4]) ;
+            S(end).ON = eltbl(Triangle,[1i 4i 3i]) ;
         S(end+1).Test = [-1 1 -1 -1] ;
-            S(end).OUT = eltbl(tet,[2 1i 5i 2i]) ;
-            S(end).IN = eltbl(prism,[1i 5i 2i 1 4 3]) ;
-            S(end).ON = eltbl(tri,[1i 2i 5i]) ;
+            S(end).OUT = eltbl(this,[2 1i 5i 2i]) ;
+            S(end).IN = eltbl(Prism,[1i 5i 2i 1 4 3]) ;
+            S(end).ON = eltbl(Triangle,[1i 2i 5i]) ;
         S(end+1).Test = [-1 -1 1 -1] ;
-            S(end).OUT = eltbl(tet,[3 2i 6i 3i]) ;
-            S(end).IN = eltbl(prism,[2i 6i 3i 2 4 1]) ;
-            S(end).ON = eltbl(tri,[2i 3i 6i]) ;
+            S(end).OUT = eltbl(this,[3 2i 6i 3i]) ;
+            S(end).IN = eltbl(Prism,[2i 6i 3i 2 4 1]) ;
+            S(end).ON = eltbl(Triangle,[2i 3i 6i]) ;
         S(end+1).Test = [-1 -1 -1 1] ;
-            S(end).OUT = eltbl(tet,[4 4i 6i 5i]) ;
-            S(end).IN = eltbl(prism,[4i 6i 5i 1 3 2]) ;
-            S(end).ON = eltbl(tri,[4i 5i 6i]) ;
+            S(end).OUT = eltbl(this,[4 4i 6i 5i]) ;
+            S(end).IN = eltbl(Prism,[4i 6i 5i 1 3 2]) ;
+            S(end).ON = eltbl(Triangle,[4i 5i 6i]) ;
     % Two Node IN
         S(end+1).Test = [-1 -1 1 1] ;
-            S(end).IN = eltbl(prism,[1 3i 4i 2 2i 5i]) ;
-            S(end).OUT = eltbl(prism,[4 5i 4i 3 2i 3i]) ;
-            S(end).ON = eltbl(quad,[4i 5i 2i 3i]) ;
+            S(end).IN = eltbl(Prism,[1 3i 4i 2 2i 5i]) ;
+            S(end).OUT = eltbl(Prism,[4 5i 4i 3 2i 3i]) ;
+            S(end).ON = eltbl(Quadrangle,[4i 5i 2i 3i]) ;
         S(end+1).Test = [-1 1 -1 1] ;
-            S(end).IN = eltbl(prism,[1 4i 1i 3 6i 2i]) ;
-            S(end).OUT = eltbl(prism,[2 2i 1i 4 6i 4i]) ;
-            S(end).ON = eltbl(quad,[1i 2i 6i 4i]) ;
+            S(end).IN = eltbl(Prism,[1 4i 1i 3 6i 2i]) ;
+%             S(end).OUT = eltbl(Prism,[4 5i 4i 3 2i 3i]) ;
+            S(end).ON = eltbl(Quadrangle,[1i 2i 6i 4i]) ;
         S(end+1).Test = [-1 1 1 -1] ;
-            S(end).IN = eltbl(prism,[1 1i 3i 4 5i 6i]) ;
-            S(end).OUT = eltbl(prism,[2 1i 5i 3 3i 6i]) ;
-            S(end).ON = eltbl(quad,[1i 3i 6i 5i]) ;
+            S(end).IN = eltbl(Prism,[1 1i 3i 4 5i 6i]) ;
+%             S(end).OUT = eltbl(Prism,[4 5i 4i 3 2i 3i]) ;
+            S(end).ON = eltbl(Quadrangle,[1i 3i 6i 5i]) ;
         S(end+1).Test = [1 -1 -1 1] ;
-            S(end).IN = eltbl(prism,[2 1i 5i 3 3i 6i]) ;
-            S(end).OUT = eltbl(prism,[1 1i 3i 4 5i 6i]) ;
-            S(end).ON = eltbl(quad,[1i 5i 6i 3i]) ;
+            S(end).IN = eltbl(Prism,[2 1i 5i 3 3i]) ;
+%             S(end).OUT = eltbl(Prism,[4 5i 4i 3 2i 3i]) ;
+            S(end).ON = eltbl(Quadrangle,[1i 5i 6i 3i]) ;
         S(end+1).Test = [1 -1 1 -1] ;
-            S(end).IN = eltbl(prism,[2 2i 1i 4 6i 4i]) ;
-            S(end).OUT = eltbl(prism,[1 4i 1i 3 6i 2i]) ;
-            S(end).ON = eltbl(quad,[1i 4i 6i 2i]) ;
+%             S(end).IN = eltbl(Prism,[1 3i 4i 2 2i 5i]) ;
+%             S(end).OUT = eltbl(Prism,[4 5i 4i 3 2i 3i]) ;
+            S(end).ON = eltbl(Quadrangle,[1i 4i 6i 2i]) ;
         S(end+1).Test = [1 1 -1 -1] ;
-            S(end).IN = eltbl(prism,[4 5i 4i 3 2i 3i]) ;
-            S(end).OUT = eltbl(prism,[1 3i 4i 2 2i 5i]) ;
-            S(end).ON = eltbl(quad,[5i 4i 3i 2i]) ;
+%             S(end).IN = eltbl(Prism,[1 3i 4i 2 2i 5i]) ;
+%             S(end).OUT = eltbl(Prism,[4 5i 4i 3 2i 3i]) ;
+            S(end).ON = eltbl(Quadrangle,[5i 4i 3i 2i]) ;
     end
     
     function S = sliceCases(this)
