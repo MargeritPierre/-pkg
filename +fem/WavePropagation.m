@@ -138,6 +138,73 @@
     setPlot(gammaMax,plotType,logScale) ;
     waveModeAnimation(mesh,Kdir,U,plothandle) ;
 
+    
+%% WAVES IN AN HOMOGENEOUS ISOTROPIC PLATE: frequency sweep
+% Parameters
+    % Geometry
+        L = [0 0 1] ; % unit cell size (mm)
+        dx = .025 ; % element size (mm)
+    % Material
+        E = 210e3*(1+1i*1e-4) ; % Young modulus (MPa)
+        G = E/2.6 ; % shear modulus (MPa)
+        nu = E./(2*G)-1 ;
+        rho = 7800e-12 ; % material density (tons/mm^3)
+        sig = 0.0001*E*[0 0 0 0 0 0] ; % pre-stress (MPa) [S11 S22 S33 S13 S23 S12]
+    % Wave 
+        dir = [1 0 NaN] ; % wave propagation direction [Nan: no periodicity]
+        freq = logspace(1,8,100) ; % wave frequency
+        nModes = 80 ; % number of extracted wave modes
+    % Display
+        plotType = 'c' ; % 'c', 'k' , 'l' or 'g'
+        logScale = true ;
+        gammaMax = 1 ; inf ;
+% Build the mesh
+    mesh = pkg.geometry.mesh.GridMesh(L,dx) ;
+% Display the mesh
+    clf ; axis equal tight ; view([30 30]) ;
+    plot(mesh) ;
+% UNSTRESSED
+    % Build the FEM matrices
+        C = stiffness(E,G) ;
+        [K00,K0i,Kij,M,P] = FEM(mesh,C,rho) ;
+    % Compute the wavenumbers and modes
+        [K0,U0] = bloch(mesh,K00,K0i,Kij,M,P,freq,dir,nModes) ;
+% PRE-STRESSED
+    % Build the FEM matrices
+        C = stiffness(E,G) ;
+        [K00,K0i,Kij] = FEM(mesh,C,rho,sig) ;
+    % Compute the wavenumbers and modes
+        [Ks,Us,omega] = bloch(mesh,K00,K0i,Kij,M,P,freq,dir,nModes) ;
+%% DISPLAY RESULTS
+    clf ;
+% Theoretical wavenumbers
+        h = norm(L) ;
+        Q = E/(1-nu^2) ;
+    % Longitudinal wave
+        kl = omega.*sqrt(rho/Q) ;
+        plot3(freq,real(kl),imag(kl),'-','linewidth',1) ;
+    % Bending waves
+        I = h^3/12 ;
+        kb = sqrt(omega).*(rho*h/Q/I)^.25 ;
+        plot3(freq,real(kb),imag(kb),'-','linewidth',1) ;
+    % ... with transverse shear correction
+        xi = pi^2/12 ; p = rho/Q ; q = rho/xi/G ;
+        kbs1 = omega.*sqrt((p+q) - sqrt((p-q)^2 + 4./(omega.^2).*(rho*h/Q/I)))/sqrt(2) ;
+        plot3(freq,real(kbs1),imag(kbs1),'-','linewidth',1) ;
+        kbs2 = omega.*sqrt((p+q) + sqrt((p-q)^2 + 4./(omega.^2).*(rho*h/Q/I)))/sqrt(2) ;
+        plot3(freq,real(kbs2),imag(kbs2),'-','linewidth',1) ;
+    % Torsion wave
+        kt = omega.*(rho/G)^.5 ;
+        plot3(freq,real(kt),imag(kt),'-','linewidth',1) ;
+% Computed wavenumbers
+    FREQ = freq + 0*K0 ;
+    Kdir = K0(:).*dir ;
+    plothandle = plot3(FREQ(:),real(K0(:)),imag(K0(:)),'+k','markersize',4,'linewidth',.1) ;
+%     plot3(freq,real(K0),imag(K0),'+k','markersize',4,'linewidth',.1) ;
+%     plot3(freq,real(Ks),imag(Ks),'xr','markersize',4,'linewidth',.1) ;
+% Set plot options
+    setPlot(gammaMax,plotType,logScale) ;
+    waveModeAnimation(mesh,Kdir,U0,plothandle) ;
 
 %% MATERIAL STIFFNESS MATRIX
 function C = stiffness(E,G)
@@ -208,7 +275,7 @@ function [K00,K0i,Kij,M,P] = FEM(mesh,C,rho,sig,perVec)
     M = blkdiag(M,M,M) ;
     
     % PRESTRESS INFLUENCE
-    if any(abs(sig)>eps)
+    if nargin>=4 && any(abs(sig)>eps)
     % Stress components on quadrature points
         if size(sig,1)==1 % homogeneous stress
             sigW = we.*sig ;
@@ -243,6 +310,7 @@ function [K00,K0i,Kij,M,P] = FEM(mesh,C,rho,sig,perVec)
     end
 
     % PERIODICITY MATRICES
+    if nargin<5 ; perVec = diag(range(mesh.boundingBox,1)) ; end
     P = cell(size(perVec,1),1) ;
     if ~isempty(perVec)
         [P{:}] = mesh.perNodeMat(perVec) ;
