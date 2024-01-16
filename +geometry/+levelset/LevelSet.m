@@ -210,6 +210,14 @@ end
             end
             this.Kinks = this.Kinks*R ;
         end
+        
+        function this = offset(this,d)
+        % Offset the levelset with a given distance
+            this.Function = @(p)this.Function(p)-d ;
+            this.BoundingBox = this.BoundingBox+[-1;1]*d ;
+            this.EdgeFcns = {} ;
+            this.Kinks = [] ;
+        end
     end
 %% GEOMETRY UTILS
     methods
@@ -219,6 +227,7 @@ end
             if nargin<3 ; dtol = 1e-6*norm(range(this.BoundingBox,1)) ; end
         % first test in bbox
             bboxtol = this.BoundingBox + [-1;1]*dtol ;
+            P = P(:,1:size(bboxtol,2),:,:,:,:,:,:) ;
             in = all( P>=bboxtol(1,:) & P<=bboxtol(2,:) ,2) ;
             if nargout>1 ; on = in ; end
         % Then use the distance function
