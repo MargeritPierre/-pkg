@@ -16,7 +16,7 @@ function edgFcns = polylineEdgeFunctions(points,method)
             end
         case 'full' % One edge reprezenting the full polyline
             L = [0 ; cumsum(sqrt(sum(diff(points,1,1).^2,2)))] ;
-            edgFcns = @(t)interp1(L/L(end),points,t(:),'linear','extrap') ;
+            edgFcns = {@(t)interp1(L/L(end),points,t(:),'linear','extrap')} ;
     end
         
 end

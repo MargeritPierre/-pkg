@@ -3,34 +3,39 @@
 %% WAVES IN AN HOMOGENEOUS PRISMATIC WAVEGUIDE
 % Parameters
     % Geometry
-        L = [4 .5] ; % unit cell size (mm)
-        dx = .12 ; % element size (mm)
-        perVec = diag(L) ; % periodicity vectors
+        L = [10 2] ; [4 .5] ; % unit cell size (mm)
+        dx = min(L)/6 ; .12 ; % element size (mm)
+        perVec = [] ; diag(L) ; % periodicity vectors
     % Material
-        E = .5e3*(1+.00001i) ; % Young modulus (MPa)
-        G = E/2.6 ; % shear modulus (MPa)
+        E = 70e3*(1+0.0001i) ; .5e3*(1+.00001i) ; % Young modulus (MPa)
+        G = E/2.62 ; % shear modulus (MPa)
         nu = E./(2*G)-1 ;
-        rho = 1200e-12 ; % material density (tons/mm^3)
+        rho = 2700e-12 ; 1200e-12 ; % material density (tons/mm^3)
     % Wave 
         dir = [NaN NaN 1] ; % wave propagation direction [Nan: no periodicity]
-        freq = logspace(3,6,100) ; % wave frequency
+        freq = linspace(100,1000e3,500) ; logspace(3,6,100) ; % wave frequency
         nModes = 50 ; % number of extracted wave modes
     % Display
         plotType = 'k' ; % 'c', 'k' , 'l' or 'g'
-        logScale = true ;
+        logScale = false ;
         gammaMax = .1 ; inf ;
 % Build the mesh
     mesh = pkg.geometry.mesh.GridMesh(L,dx) ;
-    %if numel(L)==2 ; mesh.setElementTypes(pkg.geometry.mesh.elements.Quad8) ; end
+    if numel(L)==2 ; mesh.setElementTypes(pkg.geometry.mesh.elements.Quad8) ; end
 % Display the mesh
     clf ; axis equal tight ; view([30 30]) ;
     plot(mesh) ;
 % Build the FEM matrices
     C = pkg.fem.bloch.stiffness(E,G) ;
     [K00,K0i,Kij,M,P] = pkg.fem.bloch.FEM(mesh,C,rho,[],perVec) ;
+% ZERO-TH ORDER MODES
+%     [U0,omega0] = pkg.fem.bloch.zeroKmodes(K00,M,nModes) ;
+%     f0 = omega0/2/pi
+%     plot(real(f0),'-')
 % Compute the wavenumbers and modes
-    [K,U,omega] = pkg.fem.bloch.solve(mesh,K00,K0i,Kij,M,P,freq,dir,nModes) ;
-% DISPLAY RESULTS
+    [K,U,omega] = pkg.fem.bloch.solve(K00,K0i,Kij,M,freq,dir,nModes) ;
+    U = reshape(P*U(:,:),[mesh.nNodes 3 nModes numel(freq)]) ;
+%% DISPLAY RESULTS
     clf ;
 % Theoretical wavenumbers
         b = L(1) ; h = L(2) ;
@@ -66,10 +71,10 @@
 % Computed wavenumbers
     FREQ = freq + 0*K ;
     Kdir = K(:).*dir ;
-    plothandle = plot3(FREQ(:),real(K(:)),imag(K(:)),'+k','markersize',4,'linewidth',.1) ;
+    plothandle = plot3(FREQ(:),real(K(:)),imag(K(:)),'.','markersize',4,'linewidth',.1) ;
 % Set plot options
     pkg.fem.bloch.setPlot(gammaMax,plotType,logScale) ;
-    pkg.fem.bloch.waveModeAnimation(mesh,Kdir,U,plothandle,false)
+%     pkg.fem.bloch.waveModeAnimation(mesh,Kdir,U,plothandle,true)
     
 
 %% WAVES IN A TWO-PHASE INFINITE 3D SOLID

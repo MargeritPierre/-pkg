@@ -5,6 +5,7 @@ function [U,omega] = zeroKmodes(K00,M,nModes)
     nDOFs = size(M,1) ;
     [U,w2] = eigs(K00,M,nModes,'sm') ;
     omega = sqrt(diag(w2)) ;
+    
 
 
 end

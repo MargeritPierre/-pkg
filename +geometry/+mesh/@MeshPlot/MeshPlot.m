@@ -48,6 +48,8 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
     properties
     % Color data
         CData
+    % Alpha data
+        AlphaData
     end
     properties (Hidden)
     % Graphical objects handles
@@ -150,6 +152,33 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
             end
             this.CData = cdata ;
             this.update('CData') ;
+        end
+    % Changing the face transparency
+    function adata = get.AlphaData(this)
+            adata = this.AlphaData ; %this.Faces.FaceVertexCData ;
+        end
+        function set.AlphaData(this,adata)
+            adata = full(adata) ;
+            switch size(adata,1)
+                case 0 % no color
+                    this.Faces.FaceVertexAlphaData = [] ;
+                    this.AlphaData = [] ; return ;
+                case 1 % uniform color, RBG, or string
+                    this.Faces.FaceAlpha = adata ;
+                case this.Mesh.nNodes % nodal values
+                    this.Faces.FaceAlpha = 'interp' ;
+                case this.Mesh.nElems % elem values
+                    this.Faces.FaceAlpha = 'flat' ;
+                    this.Faces.FaceVertexAlphaData = adata ;
+                    this.AlphaData = [] ; return ;
+                otherwise % try on gauss points
+                    [ee,~,ie] = this.Mesh.integration ;
+                    if size(adata,1)~=numel(ie) ; error('Wrong shape for CData') ; end
+                    this.Faces.FaceAlpha = 'interp' ;
+                    adata = this.Mesh.interpMat(ee,ie)\adata ;
+            end
+            this.AlphaData = adata ;
+            this.update('AlphaData') ;
         end
     % Feature visibility
         function set.VisibleNodes(this,opt) ; this.VisibleNodes = char(opt) ; update(this) ; end
@@ -362,8 +391,8 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
                 if toUpdate({'all','Faces'}) 
                     this.setVisibleFaceIdx ; 
                 end
-                if toUpdate({'all','Faces','Vertices','CData'}) 
-                    this.setPatch(this.Faces,this.Vertices,this.FaceTable.indicesWithNaNs,this.CData) ;
+                if toUpdate({'all','Faces','Vertices','CData','AlphaData'}) 
+                    this.setPatch(this.Faces,this.Vertices,this.FaceTable.indicesWithNaNs,this.CData,this.AlphaData) ;
                 end
             % Edges
                 if toUpdate({'all','Edges'}) 
@@ -519,7 +548,7 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
     
 %% UNIQUE INDICES (DATA REDUCTION)
     methods
-        function setPatch(~,pa,vertices,faces,cdata)
+        function setPatch(~,pa,vertices,faces,cdata,adata)
         % Set a patch vertices and faces while reducing strored data
             if nargin<4 % show vertices
                 faces = 1:size(vertices,1) ;
@@ -534,6 +563,9 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         % Color data
             if nargin<5 || isempty(cdata) ; return ; end
             set(pa,'facevertexcdata',cdata(vv,:)) ;
+        % Alpha data
+            if nargin<6 || isempty(adata) ; return ; end
+            set(pa,'facevertexalphadata',adata(vv,:)) ;
         end
     end
 

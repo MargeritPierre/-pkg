@@ -2,6 +2,10 @@ classdef GridMesh < pkg.geometry.mesh.Mesh
 %GRIDMESH Construct a grid mesh
 
 %% GRID MESH CONSTRUCTOR
+properties
+    Ne(1,:) double = [] ; % number of elements
+    Domain(2,:) double = [] ; % grid domain
+end
 methods
     function this = GridMesh(varargin)
     % Constructor
@@ -35,7 +39,7 @@ methods
                 Ne = double(varargin{1}) ;
             else % mesh = GridMesh(...,dx)
                 dx = varargin{1} ;
-                Ne = ceil(range(domain,1)./dx) ;
+                Ne = round(range(domain,1)./dx) ;
             end
             varargin(1) = [] ;
         end
@@ -65,6 +69,8 @@ methods
         end
     % Mesh
         this = this@pkg.geometry.mesh.Mesh('Nodes',X,'Elems',Elems,varargin{:}) ;
+        this.Ne = Ne ;
+        this.Domain = domain ;
     end
 end
     

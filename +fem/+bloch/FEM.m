@@ -24,7 +24,14 @@ function [K00,K0i,Kij,M,P] = FEM(mesh,C,rho,sig,perVec)
     if size(C,3)==1 % homogeneous solid
         CW = kron(sparse(C),W) ;
     else % heterogeneous
-        Cqp = C(:,:,ie) ; % material stiffness at quadrature points
+    % material stiffness at quadrature points
+        if size(C,3)==nQP
+            Cqp = C ;
+        elseif size(C,3)==mesh.nElems
+            Cqp = C(:,:,ie) ;
+        elseif size(C,3)==mesh.nNodes
+            Cqp = reshape((N*reshape(C,[6*6 mesh.nNodes]).').',[6 6 nQP]) ;
+        end
         Cqp = Cqp.*reshape(we,1,1,[]) ; % times weights
         iii = (0:5)'*nQP + zeros(1,6) + reshape(1:nQP,1,1,[]) ;
         jjj = zeros(6,1) + (0:5)*nQP + reshape(1:nQP,1,1,[]) ;

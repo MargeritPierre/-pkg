@@ -1,7 +1,7 @@
 function waveModeAnimation(mesh,Kdir,U,plothandle,extrude)
 % INTERACTIVE ANIMATION OF BLOCH WAVE MODES
     tag = 'waveAnim' ;
-    amp = 5*15/1000./norm(range(mesh.Nodes,1)) ;
+    amp = 5*15/10./norm(range(mesh.Nodes,1)) ;
     timerPeriod = .05 ;
     animFreq = .5  ;
     Le = 3.5*norm(range(mesh.boundingBox,1)) ;
