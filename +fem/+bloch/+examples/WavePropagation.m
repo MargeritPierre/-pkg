@@ -170,10 +170,10 @@
     plot(mesh) ;
 % UNSTRESSED
     % Build the FEM matrices
-        C = stiffness(E,G) ;
-        [K00,K0i,Kij,M,P] = FEM(mesh,C,rho) ;
+        C = pkg.fem.bloch.stiffness(E,G) ;
+        [K00,K0i,Kij,M,P] = pkg.fem.bloch.FEM(mesh,C,rho) ;
     % Compute the wavenumbers and modes
-        [K0,U0] = bloch(mesh,K00,K0i,Kij,M,P,freq,dir,nModes) ;
+        [K0,U0] = pkg.fem.bloch.solve(mesh,K00,K0i,Kij,M,P,freq,dir,nModes) ;
 % PRE-STRESSED
     % Build the FEM matrices
         C = pkg.fem.bloch.stiffness(E,G) ;

@@ -9,6 +9,7 @@ file = string(file) ;
 if ~any(regexp(file,".gif",'once')) ; file = string(file) + ".gif" ; end
 
 if iscell(frames) ; frames = cat(4,frames{:}) ; end
+if isstruct(frames) ; frames = cat(4,frames.cdata) ; end
 
 % Default options
 varargin = [...

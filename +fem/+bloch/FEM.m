@@ -51,11 +51,15 @@ function [K00,K0i,Kij,M,P] = FEM(mesh,C,rho,sig,perVec)
 
     % MASS MATRICES
     if numel(rho)==1
-        rhoW = rho*W ;
-    else
-        rhogp = rho(ie) ;
-        rhoW = diag(sparse(rhogp(:).*we)) ;
+        rhoW = rho*we ;
+    elseif numel(rho)==nQP
+        rhoW = rho(:).*we ;
+    elseif numel(rho)==mesh.nNodes
+        rhoW = (N*rho(:)).*we ;
+    elseif numel(rho)==mesh.nElems
+        rhoW = rho(ie).*we ;
     end
+    rhoW = diag(sparse(rhoW)) ;
     M = (N'*rhoW*N) ;
     M = blkdiag(M,M,M) ;
     

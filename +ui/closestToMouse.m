@@ -1,6 +1,7 @@
 function [p,d] = closestToMouse(pts,ax)
 % Get the closest data point to the mouse pointer
     if nargin<2 ; ax = gca ; end
+    pts(:,end+1:3,:) = 0 ;
 % Mouse position in axes 
     line = ax.CurrentPoint ;
 % Set to limits if rotation perpendicular

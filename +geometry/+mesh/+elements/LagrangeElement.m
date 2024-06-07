@@ -290,24 +290,25 @@ classdef LagrangeElement < pkg.geometry.mesh.elements.AbstractElement
                 % 1D Case
                     switch order
                         case 0 ; this.setGaussIntegration(1) ; return ; 
-                        case 1 ; GP = 1/2 ; W = 1 ;
+                        case 1 ; GP = 1/2 ; Wd = 1 ;
                         case 2
                             a = 1/sqrt(3) ;
                             GP = ([-a;a]+1)/2 ;
-                            W = [1;1]/2 ;
+                            Wd = [1;1]/2 ;
                         case 3
                             a = sqrt(3/5) ;
                             GP = ([-a;0;a]+1)/2 ;
-                            W = [5;8;5]/18 ;
+                            Wd = [5;8;5]/18 ;
                         otherwise
                             warning('Element integration scheme limited to order 3.') ;
                             this.setGaussIntegration(3) ;
                             return ; 
                     end
                 % Multidim grid
+                    W = Wd ;
                     for dd = 2:this.nDims
                         GP = [repmat(GP,order,1) repelem(GP(:,end),order,1)] ;
-                        W = repmat(W(:),order,1).*repelem(W(:),order,1) ;
+                        W = reshape(W(:).*Wd(:).',[],1) ;
                     end
                 case 'simplex'
                     switch order
