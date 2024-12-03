@@ -9,7 +9,7 @@ if nargin<2
     if size(ANGLE,2)>1 % rotation vector
         A = sqrt(sum(ANGLE.^2,2)) ;
         AXIS = ANGLE./A ;
-        AXIS(A<eps,:) = [0 0 1] ; % If the vector is zero, return identity matrix
+        AXIS(A<eps,:) = repmat([0 0 1],sum(A<eps),1) ; % If the vector is zero, return identity matrix
         ANGLE = asin(A) ;
     else
         AXIS = [0 0 1] ;

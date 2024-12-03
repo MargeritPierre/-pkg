@@ -1,7 +1,7 @@
 function [pl] = waveModeAnimation(mesh,Kdir,U,plothandle,extrude_L_or_N,gif_on_click)
 % INTERACTIVE ANIMATION OF BLOCH WAVE MODES
     tag = "waveAnim" ;
-    amp = .1./norm(range(mesh.Nodes,1)) ;
+    amp = 10*.25./norm(range(mesh.Nodes,1)) ;
     timerPeriod = .05 ;
     animFreq = .5  ;
     
@@ -61,6 +61,7 @@ function [pl] = waveModeAnimation(mesh,Kdir,U,plothandle,extrude_L_or_N,gif_on_c
     set(fiig,'tag',tag+"_fig") ;
     axis equal tight off ; 
     if wavemesh.nCoord>2 ; view([30 30]) ; end
+    caxis([-1 1]*amp) ;
         
     % Display
     pl0 = plot(wavemesh,'VisibleFaces','none','EdgeWidth',.05,'VisibleEdges','none') ;
@@ -91,7 +92,7 @@ function [pl] = waveModeAnimation(mesh,Kdir,U,plothandle,extrude_L_or_N,gif_on_c
     timerfcn = @(src,evt)cellfun(@(c)c(src,evt),{...
                     @(src,evt)set(pl,'Deformation',defShape(toc(startTime)),'CData',sqrt(sum(defShape(toc(startTime)).^2,2))) ...
                 },'uni',false);
-    ti = timer('Period',timerPeriod,'ExecutionMode','FixedRate','TimerFcn',timerfcn,'tag',tag) ;
+    ti = timer('Period',timerPeriod,'ExecutionMode','FixedSpacing','TimerFcn',timerfcn,'tag',tag) ;
     start(ti)
 
     % Delete timer on figure(s) close

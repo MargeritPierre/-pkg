@@ -9,15 +9,20 @@ function d = toBox(P,CENTER,SIDES)
 
     if isempty(P) ; d = [] ; return ; end
 
-    ds = abs(P-CENTER)-SIDES/2 ; % 1D Distance to box sides
+%     ds = abs(P-CENTER)-SIDES/2 ; % 1D Distance to box sides
+%     
+%     % INSIDE: closest side
+%     d = max(ds,[],2) ; % Closest side fo
+%     
+%     % OUTSIDE: edge/vertice distance
+%     isout = any(ds>0,2) ;
+%     ds(ds<=0) = 0 ;
+%     d(isout) = sqrt(sum(ds(isout,:).^2,2)) ;
     
-    % INSIDE: closest side
-    d = max(ds,[],2) ; % Closest side fo
-    
-    % OUTSIDE: edge/vertice distance
-    isout = any(ds>0,2) ;
-    ds(ds<=0) = 0 ;
-    d(isout) = sqrt(sum(ds(isout,:).^2,2)) ;
+    % From https://iquilezles.org/articles/distfunctions/
+    P = P - CENTER ;
+    P = abs(P) - SIDES/2 ;
+    d = sqrt(sum(max(P,0.0).^2,2)) + min(max(P,[],2),0.0);
 
 end
 

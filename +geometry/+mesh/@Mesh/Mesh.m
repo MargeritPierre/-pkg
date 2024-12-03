@@ -312,7 +312,7 @@ methods
     % Sort the element nodes of a planar mesh in clockwise 
     % or counter-clockwise(==trigo) direction
     % WARNING: only works with 1st order TRIS or QUADS !!!
-        if ~this.isPlanar ; error('Cannot sort nodes of a non-planar mesh') ; end
+        if ~this.isPlanar ; warning('Cannot sort nodes of a non-planar mesh') ; mesh = this ; return ; end
         if nargin<2 ; dir = 'trigo' ; end
         if nargout==0 ; mesh = this ; else ; mesh = copy(this) ; end
         % Barycentered coordinates
@@ -346,6 +346,31 @@ methods
         [W,~] = features.getListOf('GaussIntegrationWeights') ;
         sz = abs(J).*W ;
         sz = accumarray(ie(:),sz(:),[features.nElems 1]) ;
+    end
+    
+    function q = elemQuality(this,features)
+    % Element quality measurements
+        if nargin<2 ; features = this.Elems ; end
+        q = NaN(features.nElems,1) ;
+        for ti = 1:numel(features.Types)
+            ee = features.TypeIdx==ti ; % element indices in the table
+            submesh = pkg.geometry.mesh.Mesh('Nodes',this.Nodes,'Elems',features.subpart(ee)) ;
+            Le = submesh.elemSize(submesh.Edges) ; % edge lengths
+            Le = Le(pkg.data.sparse2list(submesh.ElemEdges')) ; % lengths associated to each element 
+            switch class(features.Types(ti))
+                case 'pkg.geometry.mesh.elements.base.Triangle'
+                    a = Le(:,1) ; b = Le(:,2) ; c = Le(:,3) ;
+                    q(ee) = (b+c-a).*(c+a-b).*(a+b-c)./(a.*b.*c) ;
+                case 'pkg.geometry.mesh.elements.base.Tetrahedron' % see https://en.wikipedia.org/wiki/Tetrahedron
+                    V = submesh.elemSize(submesh.Elems) ; % element volumes
+                    A = submesh.elemSize(submesh.Faces) ; % faces areas
+                    inR = 3*V./(submesh.elem2face'*A) ; % inner radius
+                    a = Le(:,1) ; b = Le(:,3) ; c = Le(:,4) ;
+                    A = Le(:,6) ; B = Le(:,5) ; C = Le(:,2) ;
+                    outR = sqrt((A.*a+B.*b+C.*c).*(A.*a+B.*b-C.*c).*(A.*a-B.*b+C.*c).*(-A.*a+B.*b+C.*c))./(24.*V) ; % circumradius
+                    q(ee) = 3*inR./outR ;
+            end
+        end
     end
     
     function [idx,dist2] = near(this,location,features,tol)
@@ -934,7 +959,7 @@ methods
             x(A.nNodes+1:end,1:B.nCoord) = B.Nodes ;
         % New element table
             elems = [A.Elems B.Elems] ;
-            elems.NodeIdx(A.nElems+1:end,:) = elems.NodeIdx(A.nElems+1:end,:) ...
+            elems.NodeIdx(A.nElems+1:end,:) = uint32(elems.NodeIdx(A.nElems+1:end,:)) ...
                                             + uint32(A.nNodes.*logical(elems.NodeIdx(A.nElems+1:end,:))) ;
         % Return/Modify the mesh
             mesh.Nodes = x ; 
@@ -1069,22 +1094,42 @@ methods
         fBool(all(eBool==1 | isnan(eBool),2)) = 1 ; % all nodes outside
     end
     
-    function [Xc,t] = edgCrossLvlSet(this,fcnX,edg,tol,X)
+    function [Xint,tint] = edgCrossLvlSet(this,fcnX,edg,tol,X)
     % Return the parameters t corresponding to the location where the edge
     % cross a levelset (fcn changes of sign)
         if nargin<3 ; edg = 1:this.nEdges ; end
         if nargin<4 ; tol = this.defaultTolerance ; end
         if nargin<5 ; X = this.Nodes ; end
-        if isempty(edg) || ~any(edg) ; t = [] ; Xc = [] ; return ; end
+        if isempty(edg) || ~any(edg) ; tint = [] ; Xint = [] ; return ; end
         edges = this.Edges.subpart(edg) ;
-        if ~isnumeric(fcnX) ; fcnX = fcnX(X) ; end
-    % Get the intersection parameter <TODO> higher-order interp with tol..
-        fcnEdg = edges.dataAtIndices(fcnX) ;
-        t = fcnEdg(:,1)./(fcnEdg(:,1)-fcnEdg(:,2)) ; % (linear interpolation !)
-    % Get intersection points
-        Xe = edges.dataAtIndices(X) ;
-        Xc = Xe(:,1,:).*(1-t) + Xe(:,2,:).*t ;
-        Xc = permute(Xc,[1 3 2]) ;
+    % Get the intersection parameter
+        Xe = edges.dataAtIndices(X) ; % [nEdges 2 nCoord]
+        % linear interpolation on the discrete levelset
+            if isnumeric(fcnX) ; fcnXd = fcnX ; else ; fcnXd = fcnX(X) ; end
+            fe = edges.dataAtIndices(fcnXd) ; % [nEdges 2]
+            tint = fe(:,1)./(fe(:,1)-fe(:,2)) ; % (linear interpolation !)
+            Xint = Xe(:,1,:).*(1-tint) + Xe(:,2,:).*tint ; % [nEdges 1 nCoord]
+        % Refine the solution for analytic levelsets with dichotomy-based cross finding
+            if ~isnumeric(fcnX)
+                t = repmat([0 1],edges.nElems,1) ; ft = fe ; % initialize with edge extremities
+                nc = sign(fe(:,1))~=sign(fe(:,2)) ; % notconverged flag cull edges that no not cross the levelset
+                while any(nc)
+                % Function value at current intersection
+                    fint = fcnX(Xint(nc,:)) ; % [nEdges 1]
+                % Keep the other point with opposite value
+                    ist2opposite = sign(ft(nc,2))~=sign(fint) ;
+                    t(nc,:) = [tint(nc) t(nc,1).*(1-ist2opposite) + t(nc,2).*ist2opposite] ;
+                    ft(nc,:) = [fint ft(nc,1).*(1-ist2opposite) + ft(nc,2).*ist2opposite] ;
+                % Convergence test
+                    nc(nc) = nc(nc) & abs(fint)>tol ;
+                % Estimate zero crossing
+                    tint(nc) = t(nc,1) - (t(nc,2)-t(nc,1)).*ft(nc,1)./(ft(nc,2)-ft(nc,1)) ; % (linear interpolation !)
+                % Update the point
+                    Xint(nc,:) = permute(Xe(nc,1,:).*(1-tint(nc)) + Xe(nc,2,:).*tint(nc),[1 3 2]) ; % [nEdges nCoord]
+                end
+            end
+    % Intersection point
+        Xint = permute(Xint,[1 3 2]) ; % [nEdges nCoord]
     end
     
     function mesh = cut(this,fcn,tol,X)
@@ -1280,8 +1325,13 @@ methods
             [~,ind] = uniquetol([this.Nodes ; this.Nodes - vPer(pp,:)],tol,'DataScale',1,'OutputAllIndices',true,'ByRows',true) ;
             ind = ind(cellfun(@numel,ind)>1) ; 
             ind = cat(2,ind{:}) ;
-            master = ind(1,:) ; 
-            slave = ind(2,:)-this.nNodes ;
+            if isempty(ind) 
+                master = [] ; 
+                slave = [] ; 
+            else
+                master = ind(1,:) ; 
+                slave = ind(2,:)-this.nNodes ;
+            end
             ni = setdiff(1:this.nNodes,slave) ;
             T{pp} = sparse([ni slave],[ni master],1,this.nNodes,this.nNodes) ;
         end

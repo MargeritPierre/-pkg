@@ -100,13 +100,19 @@ function [K00,K0i,Kij,M,P] = FEM(mesh,C,rho,sig,perVec)
 
     % PERIODICITY MATRICES
     if nargin<5 ; perVec = diag(range(mesh.boundingBox,1)) ; end
-    P = cell(size(perVec,1),1) ;
-    if ~isempty(perVec)
-        [P{:}] = mesh.perNodeMat(perVec) ;
+    % OLD VERSION, MODIFIED ON 29.11.2024
+%     P = cell(size(perVec,1),1) ;
+%     if ~isempty(perVec)
+%         [P{:}] = mesh.perNodeMat(perVec) ;
+%     end
+%     [P{end+1:3}] = deal(speye(mesh.nNodes)) ; 
+%     % Complete periodicity
+%     P = P{1}*P{2}*P{3} ;
+    % NEW VERSION
+    if isempty(perVec) ; P = speye(mesh.nNodes) ;
+    else ; P = mesh.perNodeMat(perVec) ;
     end
-    [P{end+1:3}] = deal(speye(mesh.nNodes)) ; 
-    % Complete periodicity
-    P = P{1}*P{2}*P{3} ;
+    % THEN ...
     P(:,sum(P,1)==0) = [] ; % delete unused DOFs
     P = blkdiag(P,P,P) ; % periodicity on the 3 coordinates (constant coordinate frame)
     

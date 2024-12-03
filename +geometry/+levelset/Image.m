@@ -79,7 +79,7 @@ methods
         this.EdgeFcns = {} ;
         for ee = 1:numel(crvs)
             points = isoMesh.Nodes(crvs{ee},:) ;
-            this.EdgeFcns{end+1} = pkg.geometry.levelset.polylineEdgeFunctions(points,'full') ;
+            this.EdgeFcns(end+1) = pkg.geometry.levelset.polylineEdgeFunctions(points,'full') ;
         end
     end
 end

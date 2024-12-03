@@ -8,8 +8,8 @@ function mesh = distMesh(lvlst,varargin)
     if ~isa(lvlst,'pkg.geometry.levelset.LevelSet')
         error('The first argument MUST be a pkg.geometry.levelset.LevelSet object') ;
     end
-    if nargin==2 % given edge length
-        varargin = {'h0',varargin{1}} ;
+    if mod(nargin,2)==0 % given edge length
+        varargin = [{'h0'} varargin] ;
     end
     args = struct(varargin{:}) ; 
 
@@ -17,6 +17,10 @@ function mesh = distMesh(lvlst,varargin)
     % Distance function
         if isfield(args,'fd') ; fd = args.fd ;
         else ; fd = @lvlst.Function ;
+        end
+    % Mesh boundary only ?
+        if isfield(args,'bnd_only') ; bnd_only = args.bnd_only ;
+        else ; bnd_only = false ;
         end
     % MESH DENSITY
         % Initial (minimum) edge length 
@@ -29,12 +33,12 @@ function mesh = distMesh(lvlst,varargin)
             end
         % Initial node distribution
             if isfield(args,'p0') ; p0 = args.p0 ;
-            else ; p0 = lvlst.populate(h0,'iso',fh) ;
+            else ; p0 = lvlst.populate(h0,'iso',fh,bnd_only) ;
             end
         % Fixed nodes
             if isfield(args,'pfix') ; pfix = args.pfix ;
-            else ; pfix =  lvlst.discretizeContour(fh) ... % variable-spaced contour points
-                        ... lvlst.discretizeContour(h0) ... % uniform spaced contour points
+            else ; pfix =  lvlst.discretizeEdges(fh) ... % variable-spaced contour points
+                        ... lvlst.discretizeEdges(h0) ... % uniform spaced contour points
                         ... lvlst.Kinks ... % only kink points
                         ... [] ... % no points
                         ;
@@ -44,13 +48,17 @@ function mesh = distMesh(lvlst,varargin)
             if isfield(args,'maxCount') ; maxCount = args.maxCount ;
             else ; maxCount = 100 ;
             end
+        % Maximum allowed displacement (relative to local edge length
+            if isfield(args,'maxdp') ; maxdp = args.maxdp;
+            else ; maxdp = 1.0 ;
+            end
         % Node displacement tolerance (convergence criterion, relative to local edge length)
             if isfield(args,'dptol') ; dptol = args.dptol;
             else ; dptol = 0.01 ;
             end
         % Re-triangulation tolerance (relative to local edge length)
             if isfield(args,'ttol') ; ttol = args.ttol ;
-            else ; ttol = 0.01 ;
+            else ; ttol = 0.2 ;
             end
         % Minimum triangle quality
             if isfield(args,'qmin') ; qmin = args.qmin ;
@@ -64,21 +72,28 @@ function mesh = distMesh(lvlst,varargin)
             if isfield(args,'deltat') ; deltat = args.deltat ;
             else ; deltat = 1 ;
             end
+        % Global displacement regularization (try to avoid solid motion of symmetric shapes)
+            if isfield(args,'reg_global') ; reg_global = args.reg_global ;
+            else ; reg_global = 1e-3 ;
+            end
         % Maximum distance function allowed for Nodes (relative to local edge length)
             if isfield(args,'p_dmax') ; p_dmax = args.p_dmax ;
             else ; p_dmax =  0.5 ; 0.001 ;
             end
-        % Maximum distance function allowed for Triangle centroids (relative to local edge length)
+        % Maximum distance function allowed for Element centroids (relative to local edge length)
             if isfield(args,'t_dmax') ; t_dmax = args.t_dmax ;
-            else ; t_dmax = -0.2 ;
+            else 
+                if bnd_only ; t_dmax = -0.02 ;
+                else ; t_dmax = -0.2 ;
+                end
             end
         % Too SHORT edges threshold (rel. to local edge length)
             if isfield(args,'tooShortThrs') ; tooShortThrs = args.tooShortThrs ;
-            else ; tooShortThrs = 0.7 ; 0.49 ;
+            else ; tooShortThrs = 0.75 ;
             end
         % Too LONG edges threshold (rel. to local edge length)
             if isfield(args,'tooLongThrs') ; tooLongThrs = args.tooLongThrs ;
-            else ; tooLongThrs = 1.3 ; 2.01 ;
+            else ; tooLongThrs = 1.25 ;
             end
         % Constraint boundary nodes to be on the levelset edge
             if isfield(args,'bndCons') ; bndCons = args.bndCons ;
@@ -114,9 +129,19 @@ function mesh = distMesh(lvlst,varargin)
     if ~isempty(pfix), p=setdiff(p,pfix,'rows'); end     % Remove duplicated nodes
     pfix = unique(pfix,'rows') ; nfix = size(pfix,1) ;
     p = [pfix ; p];                                         % Prepend fix points
+    
+% Delete too close nodes (e.g if p0 has close duplicates with pfix)
+    [~,ia] = uniquetol(p,lvlst.defaultTolerance,'ByRows',true,'DataScale',1,'OutputAllIndices',true) ;
+    ia = cellfun(@min,ia) ; % take the first duplicatd point, avoiding the deletion of any pfix
+    p = p(sort(ia),:) ;
 
 % Build the mesh   
-    elmtType = pkg.geometry.mesh.elements.base.Triangle ;
+    switch lvlst.nCoord
+        case 3
+            elmtType = pkg.geometry.mesh.elements.base.Tetrahedron ;
+        otherwise
+            elmtType = pkg.geometry.mesh.elements.base.Triangle ;
+    end
     mesh = pkg.geometry.mesh.Mesh ;
     mesh.Nodes = p ;
     
@@ -150,6 +175,7 @@ if optimize
         lastDisplayTime = lastPlotTime ;
         count = 0 ;
         nReTri = 0 ;
+        lastBuildMeshNodes = mesh.Nodes ;
     
     % OPTIMIZATION LOOP
         while optimize
@@ -157,6 +183,20 @@ if optimize
             % Kinematic Constraints
                 T = kinematicContraints ;
                 nDOF = size(T,2) ;
+                if 1 % visualize degrees of freedom
+%                     dofTag = [meshTag '_DOF'] ;
+%                     delete(findobj(gca,'tag',dofTag)) ;
+%                     [nnc,ddd,vvv] = find(T) ; % [dof node*coord value]
+%                     [nnn,ccc] = ind2sub(size(mesh.Nodes),nnc) ; % [node coord]
+%                     ndof = accumarray(ddd,nnn,[nDOF 1],@min) ; % DOF corresponding node
+%                     vdof = full(sparse(ddd,ccc,vvv)) ; % DOF vector
+%                     xdof = mesh.Nodes(ndof,:) ;
+%                     xdof(:,end+1:3) = 0 ; % force 3D coords
+%                     vdof(:,end+1:3) = 0 ; % force 3D coords
+%                     quiver3(xdof(:,1),xdof(:,2),xdof(:,3) ...
+%                             ,vdof(:,1),vdof(:,2),vdof(:,3) ...
+%                             ,'tag',dofTag)
+                end
                 
             % Cost Functions
                 J = sparse(nDOF,1) ;   
@@ -171,6 +211,12 @@ if optimize
 %                 drc_dx = drc_dx*T ;
 %                 J = J + drc_dx'*rc ;
 %                 H = H + drc_dx'*drc_dx ;
+
+            % Global displacement regularization (try to avoid solid motion)
+                if reg_global
+                    Hd = T'*T ;
+                    H = H + reg_global*Hd*sum(abs(H(:)))./sum(abs(Hd(:))) ;
+                end
                 
             % Displacement update
                 if 0
@@ -186,18 +232,35 @@ if optimize
                 end
                 dp = deltat*T*dp ;
                 dp = reshape(dp,mesh.nNodes,mesh.nCoord) ;
+                
+            % Maximum displacement reached ?
+                if ~isinf(maxdp)
+                    dpmax = sqrt(max(sum(dp.^2,2)./fh(mesh.Nodes).^2)) ;
+                    if dpmax>maxdp ; dp = maxdp*(dp./dpmax) ; end
+                end
+                
+            % If needed, correct points on boundary
+                if bnd_only
+                    ptemp = mesh.Nodes - dp ;
+                    ptemp = lvlst.toBoundary(ptemp) ;
+                    dp = mesh.Nodes - ptemp ;
+                end
+                
+            % Apply to the mesh
                 mesh.Nodes = mesh.Nodes - dp ;
+                dp2 = max(sum(dp.^2,2)./fh(mesh.Nodes).^2) ;
                 
             % Rebuild the mesh IF NEEDED
-                dp2 = sqrt(max(sum(dp.^2,2)./fh(mesh.Nodes).^2)) ;
-                if dp2>ttol
+                dpMesh2 = max(sum((mesh.Nodes-lastBuildMeshNodes).^2,2)./fh(mesh.Nodes).^2) ;
+                if dpMesh2>ttol^2
                     buildMesh() ;
+                    lastBuildMeshNodes = mesh.Nodes ;
                     nReTri = nReTri+1 ;
                 end
 
             % 8. Termination criteria:
                 count = count+1 ; 
-                if dp2<dptol ; infos{end+1} = 'out criterion: |dP|<tol' ; break; end
+                if dp2<dptol^2 ; infos{end+1} = 'out criterion: |dP|<tol' ; break; end
                 %if ~isvalid(meshPlot) ; infos{end+1} = 'out criterion: TriMesh not valid' ; break ; end
                 if count>=maxCount ; infos{end+1} = 'out criterion: iteration count' ; break ; end 
                 %if this.Stop.Value ; infos{end+1} = 'out criterion: user stop' ; break ; end 
@@ -209,7 +272,7 @@ if optimize
                             , ' | Nodes: ' , num2str(mesh.nNodes) ...
                             , ' | Triangles: ' , num2str(mesh.nElems) ...
                             , ' | Re-Tri: ' , num2str(nReTri) ...
-                            , ' | dP: ' , num2str(dp2,3),'/',num2str(dptol,3) ...
+                            , ' | dP: ' , num2str(sqrt(dp2),3),'/',num2str(dptol,3) ...
                     ]) ;
                 end
                 
@@ -227,7 +290,7 @@ if optimize
     % Gather infos
         if displayFreq
             infos{end+1} = [num2str(count),' iterations'] ;
-            infos{end+1} = ['last dP: ',num2str(dp2)] ;
+            infos{end+1} = ['last dP: ',num2str(sqrt(dp2))] ;
             infos{end+1} = [num2str(nReTri),' re-triangulations'] ;
         end
     % Final Iteration
@@ -236,7 +299,7 @@ if optimize
 end
 
 % Sort elements
-    mesh.sortElems ;
+    if mesh.nCoord==2 ; mesh.sortElems ; end
 
 % DISPLAY INFOS
     if displayFreq
@@ -292,9 +355,12 @@ end
         % Keep fixed nodes
             validNodes(1:nfix) = true ;
         % Set the new mesh nodes
+            if bnd_only ; newNodes = lvlst.toBoundary(newNodes) ; end
             mesh.Nodes = [mesh.Nodes(validNodes,:) ; newNodes] ;
-        % Delaunay triangulation with the new nodes
-            if ~all(validNodes) || ~isempty(newNodes) || mesh.nElems==0 || any(mesh.detJacobian<=0)
+        % Delaunay (tri.tet)angulation with the new nodes
+            remesh = ~all(validNodes) || ~isempty(newNodes) || mesh.nElems==0 || any(mesh.detJacobian<=0) ;
+            if remesh
+%                 tri = delaunayn(mesh.Nodes,{'QJ','Qt','Qbb','Qc'}) ;
                 tri = delaunay(mesh.Nodes) ;
                 idx = padarray(tri,[0 1],1,'pre') ;
                 elems = pkg.geometry.mesh.elements.ElementTable('Types',elmtType,'Indices',idx) ;
@@ -303,16 +369,29 @@ end
         % Mesh elements to keep 
             validElems = true(mesh.nElems,1) ;
         % Cull features outside the boundary
-            Xt = mesh.centroid ;
-            rdXt = fd(Xt)./fh(Xt) ; % relative signed distance of the triangle centroid
-            validElems = validElems & rdXt<=t_dmax ;
-        % Remove triangles with a quality < qmin
-        % Quality is the ratio between outside and inside circle radius*2
+            if ~bnd_only || remesh
+                Xt = mesh.centroid ;
+                rdXt = fd(Xt)./fh(Xt) ; % relative signed distance of the triangle centroid
+                validElems = validElems & rdXt<=t_dmax ;
+            end
+        % If only the boundary has to be meshed
+            if bnd_only
+                mesh.Elems = mesh.Elems.subpart(validElems) ; 
+                switch mesh.nCoord
+                    case 2
+                        mesh.Elems = mesh.Edges.subpart(mesh.boundaryEdges) ;
+                    case 3
+                        mesh.Elems = mesh.Faces.subpart(mesh.outerFaces) ;
+                end
+            % Reset valid elements & centroids 
+                validElems = true(mesh.nElems,1) ;
+                Xt = mesh.centroid ;
+                rdXt = fd(Xt)./fh(Xt) ; % relative signed distance of the triangle centroid
+            end
+        % Remove simplices with a quality < qmin
+        % Quality is the ratio between inside and outside circle radius
             if qmin
-                xe = reshape(mesh.Nodes(mesh.Elems.NodeIdx,:),mesh.nElems,3,mesh.nCoord) ;
-                Le = sqrt(sum((xe-xe(:,[2 3 1],:)).^2,3)) ;
-                a = Le(:,1) ; b = Le(:,2) ; c = Le(:,3) ;
-                q = (b+c-a).*(c+a-b).*(a+b-c)./(a.*b.*c) ;
+                q = mesh.elemQuality ;
                 validElems = validElems & q>=qmin ;
             end
         % Verify that no fixed point is lost
@@ -327,7 +406,7 @@ end
                     validElems(tmin) = true ;
                 end
             end
-        % Cull triangles
+        % Cull Elements
             if ~all(validElems)
                 mesh.Elems = mesh.Elems.subpart(validElems) ;
             % Cull unused nodes
@@ -339,14 +418,14 @@ end
             end
         % Bring the boundary points on boundary edges
             if bndCons
-                ipout = mesh.boundaryNodes ;
+                switch mesh.nCoord
+                    case 3 ; ipout = mesh.outerNodes ;
+                    otherwise ; ipout = mesh.boundaryNodes ;
+                end
                 ipout(1:nfix) = false ; % do not move fixed points
                 if any(ipout) 
-                % Local gradient
-                    dout = fd(mesh.Nodes(ipout,:)) ;
-                    dgrad = gradfd(mesh.Nodes(ipout,:)) ;
                 % Correction
-                    mesh.Nodes(ipout,:) = mesh.Nodes(ipout,:)-dout.*dgrad ;
+                    mesh.Nodes(ipout,:) = lvlst.toBoundary(mesh.Nodes(ipout,:)) ;
                 end
             end
     end
@@ -367,10 +446,10 @@ end
         % Residual
             r = L(:)-Lt(:) ;
         % Gradient
-            ii = repmat((1:mesh.nEdges)',[1 4]) ; % [nEdges 4]
-            jj = repmat(double(mesh.Edges.NodeIdx),[1 2]) + [0 0 1 1]*mesh.nNodes ; % [nEdges 4]
-            dL_dx = reshape(dx,mesh.nEdges,1,mesh.nCoord).*([-1 1]./L(:)) ; % [nEdges 2 2]
-            dr_dx = sparse(ii(:),jj(:),dL_dx(:),mesh.nEdges,2*mesh.nNodes) ;
+            ii = repmat((1:mesh.nEdges)',[1 2*mesh.nCoord]) ; % [nEdges 2*mesh.nCoord]
+            jj = repmat(double(mesh.Edges.NodeIdx),[1 mesh.nCoord]) + repelem(0:mesh.nCoord-1,2)*mesh.nNodes ; % [nEdges 2*mesh.nCoord]
+            dL_dx = reshape(dx,mesh.nEdges,1,mesh.nCoord).*([-1 1]./L(:)) ; % [nEdges 2 nCoord]
+            dr_dx = sparse(ii(:),jj(:),dL_dx(:),mesh.nEdges,mesh.nCoord*mesh.nNodes) ;
     end
 
 
@@ -393,23 +472,38 @@ end
         % Get boundary nodes to constrain
             ibnd = [] ;
             if bndCons
-                ibnd = find(mesh.boundaryNodes & (1:mesh.nNodes)'>nfix) ;
+                switch mesh.nCoord
+                    case 3 ; ibnd = find(mesh.outerNodes & (1:mesh.nNodes)'>nfix) ;
+                    case 2 ; ibnd = find(mesh.boundaryNodes & (1:mesh.nNodes)'>nfix) ;
+                end
             end
+            ibnd = ibnd(:)' ; % row vector
         % Interior points only are free to move
-            ifree = setdiff(1:mesh.nNodes,[1:nfix,ibnd(:)']) ;
+            ifree = setdiff(1:mesh.nNodes,[1:nfix,ibnd]) ;
             ii = [ii ifree ifree+mesh.nNodes] ;
             jj = [jj numel(jj)+(1:2*numel(ifree))] ;
             vv = [vv ones(1,2*numel(ifree))] ;
-        % Boundary points: can only slide along the boundary tangent
+        % Boundary points: can only slide along the boundary tangent (curve/plane)
             if ~isempty(ibnd)
-                dgrad = gradfd(mesh.Nodes(ibnd,:)) ;
-                ii = [ii ibnd(:)' ibnd(:)'+mesh.nNodes] ;
-                jj = [jj repmat(numel(jj)+(1:numel(ibnd)),[1 2])] ;
-                tang = flip(dgrad,2).*[-1 1] ; % [-dgrady dgrax]
-                vv = [vv reshape(tang,1,[])] ;
+                pb = mesh.Nodes(ibnd,:) ;
+                dgrad = gradfd(pb) ; % lvlst gradient == normal to the contour
+                switch mesh.nCoord
+                    case 2
+                        tang = flip(dgrad,2).*[-1 1] ; % [-dgrady dgrax]
+                        iit = [ibnd ibnd+mesh.nNodes] ;
+                        jjt = repmat(1:numel(ibnd),[1 2]) ;
+                    case 3
+                        tang = cellfun(@null,num2cell(dgrad,2),'uni',false) ; % tangent space: nP cell array of [3 2]==[nCoord nTangents]
+                        tang = cat(3,tang{:}) ; % [3==nCoord 2=nTangents nP]
+                        iit = mesh.nNodes*(0:2)' + [0 0] + reshape(ibnd,1,1,[]) ;  % [3==nCoord 2=nTangents nP]
+                        jjt = [0;0;0] + numel(ibnd)*[0 1] + reshape(1:numel(ibnd),1,1,[]) ;  % [3==nCoord 2=nTangents nP]
+                end
+                ii = [ii iit(:)'] ;
+                jj = [jj numel(jj)+jjt(:)'] ;
+                vv = [vv tang(:)'] ;
             end
         % Transfer matrix
-            T = sparse(ii(:),jj(:),vv(:),2*mesh.nNodes,max(jj(:))) ;
+            T = sparse(ii(:),jj(:),vv(:),mesh.nCoord*mesh.nNodes,max(jj(:))) ;
     end
 
     function dgrad = gradfd(p)

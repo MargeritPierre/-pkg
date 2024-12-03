@@ -2,7 +2,7 @@
 
 %% BASE SHAPES
 
-% Different base shapes
+% 2D base shapes
     lvlst = pkg.geometry.levelset.Point([0 1]) ; % (position)
     lvlst = pkg.geometry.levelset.Line([-1 1],[1 -1]) ; % (p1,p2)
     lvlst = pkg.geometry.levelset.Segment([0 0],[1 1]) ; % (p1,p2)
@@ -11,9 +11,14 @@
     lvlst = pkg.geometry.levelset.Rectangle([1 1],[2 3]) ; % (center,sides)
     lvlst = pkg.geometry.levelset.Circle([0,1],1) ; % (center,radius)
     lvlst = pkg.geometry.levelset.Ellipse([0,1],[1 3],45/180*pi) ; % (center,semiaxes,rotation)
-
+ 
+% 3D base shapes
+    lvlst = pkg.geometry.levelset.Sphere([0,1,0],1) ; % (center,radius)
+    lvlst = pkg.geometry.levelset.Box([0,1,1.5],[1 2 1.5]) ; % (center,sides)
+    %lvlst = pkg.geometry.levelset.Cylinder(.74,[1.3 2.2 0 ; 0 0 3.2],true) ; % (radius,axis end pts,is finite)
+    
 % Enhance BBox
-    if ~isempty(lvlst.BoundingBox) ; lvlst.BoundingBox = lvlst.BoundingBox + [-1 -1 ; 1 1]*1 ; end
+    if ~isempty(lvlst.BoundingBox) ; lvlst.BoundingBox = lvlst.BoundingBox + [-1 ; 1]*1 ; end
 
 % Plot the level set
     clf
@@ -39,8 +44,24 @@
     tic ; h = plot(lvlst) ; toc
     colorbar
     
+%% FREEFORM
+
+    fcn = @(x)sin(x(:,1)).*cos(x(:,2)) + sin(x(:,2)).*cos(x(:,3)) + sin(x(:,3)).*cos(x(:,1)) ;
+    bbox = pi.*[-1 ; 1].*[1 1 1] ;
+    lvlst = pkg.geometry.levelset.Freeform(fcn,bbox)
+    t = .25 ; lvlst = pkg.geometry.levelset.Freeform(@(p)abs(fcn(p))-t,bbox) ;
     
-%% BOOLEAN OPERATIONS
+% Enhance BBox
+    %if ~isempty(lvlst.BoundingBox) ; lvlst.BoundingBox = lvlst.BoundingBox + [-1 ; 1]*1 ; end
+
+% Plot the level set
+    clf
+    axis equal
+    axis tight
+    tic ; h = plot(lvlst) ; toc
+    colorbar
+    
+%% 2D BOOLEAN OPERATIONS
 
 % Create base shapes
     ls1 = pkg.geometry.levelset.Rectangle([0 0],[4 4]) ;
@@ -67,6 +88,56 @@
     tic ; h = plot(lvlst) ; toc
     %caxis([-1 1]*0.01)
     
+    
+%% 3D BOOLEAN OPERATIONS
+
+% Create base shapes
+    ls1 = pkg.geometry.levelset.Sphere([0,1,0],1) ; % (center,radius)
+    ls2 = pkg.geometry.levelset.Sphere([0,0,0],1) ; % (center,radius)
+    ls3 = pkg.geometry.levelset.Cylinder(.4,[0 2 0 ; 0 -1 0],true) ; % (radius,axis end pts,is finite)
+    ls4 = pkg.geometry.levelset.Box([0,.5,0],[3 1 1]) ; % (center,sides)
+    
+% Assemble them
+    profile on
+    tic
+    lvlst = (ls1 + ls2) - ls4 ;
+    toc
+    profile off
+    
+% Enhance BBox
+    if ~isempty(lvlst.BoundingBox) ; lvlst.BoundingBox = lvlst.BoundingBox + [-1 ; 1]*0.1 ; end
+
+% Plot the level set
+    clf
+    axis equal
+    axis tight
+    tic ; h = plot(lvlst) ; toc
+    %caxis([-1 1]*0.01)
+    
+%% SMOOTH INTERSECTIONS
+% see https://iquilezles.org/articles/smin/
+
+% 2D example
+ls1 = pkg.geometry.levelset.Rectangle([0 0],[1,1]) ; % (center,sides)
+ls2 = pkg.geometry.levelset.Circle(7/10*[1 1],.5) ; % (center,radius)
+
+% 3D example
+ls1 = pkg.geometry.levelset.Cylinder(.5,[-2 0 0 ; 2 0 0]) ; % (radius,endpoints)
+ls2 = pkg.geometry.levelset.Cylinder(.5,[0 -2 .5 ; 0 2 .5]) ; % (center,radius)
+
+lvlst = merge(ls1,ls2,1/10) ;
+    
+% Enhance BBox
+    if ~isempty(lvlst.BoundingBox) ; lvlst.BoundingBox = lvlst.BoundingBox + [-1 ; 1]*0.1 ; end
+
+% Plot the level set
+    clf
+    axis equal
+    axis tight
+    tic ; h = plot(lvlst) ; toc
+    caxis([-1 1]*0.01)
+
+
 %% MIX SHAPES & IMAGE
 
 % Round mask
@@ -90,11 +161,12 @@
     
 %% LEVEL SET CONTOUR DISCRETIZATION
     dx = norm(range(lvlst.BoundingBox,1))/50 ;
-    dx = @(p)dx-1.5*(p(:,2)/norm(range(lvlst.BoundingBox,1))).^2 ;
+    %dx = @(p)dx-1.5*(p(:,2)/norm(range(lvlst.BoundingBox,1))).^2 ;
     P = lvlst.discretizeContour(dx) ;
     tag = 'contour' ;
     delete(findobj(gca,'tag',tag)) ;
-    c = plot(P(:,1),P(:,2),'.k','markersize',15,'tag',tag) ;
+    P(:,end+1:3) = 0 ; % 3D coordinates
+    c = plot3(P(:,1),P(:,2),P(:,3),'.k','markersize',15,'tag',tag) ;
     
 %% LEVELSET SKELETON
     dx = norm(range(lvlst.BoundingBox,1))/50 ;
@@ -102,12 +174,23 @@
     ps = plot(skel) ;
 
 %% POPULATE THE LEVELSET
-    dx = 0.01 ;
+    dx = 0.025 ;
     tag = 'population' ;
     delete(findobj(gca,'tag',tag)) ;
-    P = lvlst.populate(dx,'iso',@(P)dx*(1 + abs(P(:,2))*2)) ;
+    P = lvlst.populate(dx,'grid',@(P)dx*(1 + abs(P(:,2))*2)) ;
     %P = [P ; lvlst.discretizeContour(dx)] ;
-    c = plot(P(:,1),P(:,2),'.k','markersize',8,'tag',tag) ;
+    P(:,end+1:3) = 0 ; % force 3D points
+    c = plot3(P(:,1),P(:,2),P(:,3),'.k','markersize',8,'tag',tag) ;
+
+%% POPULATE THE LEVELSET BOUNDARY
+    dx = 0.025 ;
+    tag = 'population' ;
+    delete(findobj(gca,'tag',tag)) ;
+    P = lvlst.populate(dx,'grid',@(P)dx*(1 + abs(P(:,2))*2),true) ;
+%     P = lvlst.populate(dx,'grid',[],true) ;
+    %P = [P ; lvlst.discretizeContour(dx)] ;
+    P(:,end+1:3) = 0 ; % force 3D points
+    c = plot3(P(:,1),P(:,2),P(:,3),'.k','markersize',8,'tag',tag) ;
     
     
 %% BUILD A MESH
@@ -115,19 +198,21 @@
     
     profile on
     mesh = pkg.geometry.mesh.distMesh(lvlst ...
-                                        ... ,'h0',10 ...
+                                        ...,'h0',.5 ...
                                         ... ,'pfix',lvlst.discretizeContour ...
+                                        ...,'pfix',mean(lvlst.BoundingBox,1).*[.9;1.1] ...
                                         ... ,'p0',mesh.Nodes ...
                                         ... ,'debug',true ...
-                                         ,'showMesh',true ...
-                                        ... ,'tooLongThrs',1.4 ...
-                                        ... ,'tooShortThrs',0.6 ...
+                                        ,'showMesh',true ...
+                                        ...,'tooLongThrs',1.2 ...
+                                        ...,'tooShortThrs',0.8 ...
                                         ... ,'maxCount',20 ...
-                                        ... ,'deltat',1 ...
-                                        ... ,'qmin',0.1 ...
-                                        ... ,'Fscale',1.2 ...
+                                        ...,'deltat',.75 ...
+                                        ...,'qmin',0*0.005 ...
+                                        ...,'Fscale',1.2 ...
                                         ... ,'bndCons',false ...
-                                        ... ,'t_dmax',0 ...
+                                        ,'t_dmax',-.02 ...
+                                        ,'bnd_only',lvlst.nCoord==3 ...
                                         ) ;
     profile off
     
@@ -193,11 +278,11 @@ profile on
         dens = pkg.geometry.density.Point(pt,[0 hmin ; l hmax]) ;
         fh = @dens.evalAt ;
     % Update the mesh points
+        pfix = lvlst.discretizeContour(fh) ;
         if tt==1 % Init the mesh if needed
             p0 = lvlst.populate(hmin,'iso',fh) ;
             mesh = pkg.geometry.mesh.Mesh('Nodes',p0) ;
         else
-            pfix = lvlst.discretizeContour(fh) ;
             p0 = mesh.Nodes(~mesh.boundaryNodes,:) ; %lvlst.populate(hmin,'iso',fh) ;
         end
     % Relaxation
@@ -213,12 +298,12 @@ profile on
         pl.Mesh = mesh ;
         drawnow ;
     end
-profile off
+profile off 
 
 
 %% TEST RECURSIVE MESHING
 
-dx = 3/10*lvlst.defaultDiscreteLength ;
+dx = 30/10*lvlst.defaultDiscreteLength ;
 tol = 1e-6*dx ;
 maxEdgLen = 1.9*dx ;
 minEdgLen = .55*dx ;
@@ -273,11 +358,6 @@ clf ; axis equal ; plot(mesh)
 %% SMOOTH
 mesh.LaplacianSmoothing([],100) ;
 clf ; axis equal ; plot(mesh)
-
-
-
-
-        
 
 
 

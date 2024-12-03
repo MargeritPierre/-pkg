@@ -232,6 +232,27 @@ methods
         % Re-move the mesh
             obj.move(CEN) ;
     end
+
+    function obj = scale(this,SC,CEN)
+    % Scale the object by 
+    % the scale factors: [N nCoord]  
+    % w.r.t the center point P: [N nCoord] (default [0 0 0])
+    % with N>=1 to replicate the object
+        if nargout==0 ; obj = this ; else ; obj = copy(this) ; end
+        if nargin<3 ; CEN = zeros(1,obj.nCoord) ; end
+    % Match argument size
+        SC = permute(SC,[3 2 1]) ; CEN = permute(CEN,[3 2 1]) ;
+        [x,CEN] = pkg.data.matchsize(2,obj.Nodes,CEN,'filler',0) ;
+        if size(SC,2)==1 % isotropic scaling
+            SC = repmat(SC,1,size(x,2)) ;
+        else
+            SC(:,end+1:size(x,2),:) = 1 ; % unit scale by default
+        end
+    % Apply the transform
+        x = (x-CEN).*SC + CEN ;
+    % Replicate the object (without filling)
+        obj.replicate(x,false) ;
+    end
     
     function obj = offset(this,DIST,fill)
     % Offset the object

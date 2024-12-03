@@ -135,6 +135,7 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
             switch size(cdata,1)
                 case 0 % no color
                     this.Faces.FaceVertexCData = [] ;
+                    this.Edges.FaceVertexCData = [] ;
                     this.CData = [] ; return ;
                 case 1 % uniform color, RBG, or string
                     this.Faces.FaceColor = cdata ;
@@ -143,6 +144,14 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
                 case this.Mesh.nElems % elem values
                     this.Faces.FaceColor = 'flat' ;
                     this.Faces.FaceVertexCData = cdata ;
+                    this.CData = [] ; return ;
+                case this.Mesh.nEdges % edge values (not working properly...)
+                    this.Edges.EdgeColor = 'flat' ;
+                    % MATLAB set the edge color to the first node.. 
+                    firstnod = this.Mesh.Edges.NodeIdx(:,1) ;
+                    clr = NaN(this.Mesh.nNodes+1,size(cdata,2)) ;
+                    clr(firstnod,:) = cdata ;
+                    this.Edges.FaceVertexCData = clr ;
                     this.CData = [] ; return ;
                 otherwise % try on gauss points
                     [ee,~,ie] = this.Mesh.integration ;
@@ -173,7 +182,7 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
                     this.AlphaData = [] ; return ;
                 otherwise % try on gauss points
                     [ee,~,ie] = this.Mesh.integration ;
-                    if size(adata,1)~=numel(ie) ; error('Wrong shape for CData') ; end
+                    if size(adata,1)~=numel(ie) ; error('Wrong shape for AlphaData') ; end
                     this.Faces.FaceAlpha = 'interp' ;
                     adata = this.Mesh.interpMat(ee,ie)\adata ;
             end
@@ -274,6 +283,8 @@ classdef MeshPlot < handle & matlab.mixin.SetGet & matlab.mixin.Copyable
         function set.FaceAlpha(this,a) ; set(this.Faces,'FaceAlpha',a) ; end
         function a = get.FaceAlpha(this) ; a = get(this.Faces,'FaceAlpha') ; end
     % Mesh Edges
+        function set.EdgeStyle(this,sty) ; set([this.Edges this.BoundaryEdges],'LineStyle',sty) ; end
+        function sty = get.EdgeStyle(this) ; sty = get(this.Edges,'LineStyle') ; end
         function set.EdgeColor(this,clr) ; set([this.Edges this.BoundaryEdges],'EdgeColor',clr) ; end
         function clr = get.EdgeColor(this) ; clr = get(this.Edges,'EdgeColor') ; end
         function set.EdgeAlpha(this,a) ; set([this.Edges this.BoundaryEdges],'EdgeAlpha',a) ; end

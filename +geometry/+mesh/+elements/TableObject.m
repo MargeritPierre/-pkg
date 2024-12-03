@@ -233,6 +233,11 @@ methods
     % is an end node
         [~,~,~,no] = this.outerFeatures ;
     end
+    
+    function this = outer(this)
+        if nargout>0 ; this = copy(this) ; end
+        this.Elems = this.Faces.subpart(this.outerFaces) ;
+    end
 
 % BOUNDARY FEATURES
     function [ed,el,no,fa] = boundaryFeatures(this)

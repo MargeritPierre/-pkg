@@ -10,6 +10,8 @@ classdef LevelSet < matlab.mixin.Heterogeneous
         BoundingBox
         % Edge fcn: a cell array of functon handles; P{i}(t) = EdgeFcns{i}(t), t in [0;1]
         EdgeFcns
+        % Surfacic mesh representation function (for quick intersection computation)
+        SurfMeshFcn
         % Singular points
         Kinks
     end
@@ -44,40 +46,97 @@ classdef LevelSet < matlab.mixin.Heterogeneous
         % Distance of intersected shapes
              d = max(d1,d2);
         end
+        
+        function d = smoothmin(d1,d2,k,method)
+        % Distance of union shapes with smooth minimums
+        % see https://iquilezles.org/articles/smin/
+            if nargin<3 ; k = 1 ; end
+            if nargin<4 ; method = 'circular' ; end
+            switch method
+                case 'circular'
+                    k = k./(1-sqrt(.5)) ;
+                    h = max(k-abs(d1-d2),0)/k ;
+                    d = min(d1,d2)-0.5*k*(1+h-sqrt(1-h.*(h-2))) ;
+                otherwise
+                    warning('Smooth minimum function not recognized. Applying min function.') ;
+                    d = min(d1,d2) ;
+            end
+        end
     end
     
     
 %% BOOLEAN OPERATIONS
     methods
-        function ls = or(ls1,ls2)
+        
+        function ls = inversion(ls)
+        % LevelSet function INVERSION
+            ls.Function = @(p)-ls.Function(p) ; 
+            ls.BoundingBox = Inf*([-1 ; 1]*ones(1,ls.nCoord)) ;
+        end
+        
+        function ls = union(ls1,ls2)
         % LevelSet function UNION
             ls = pkg.geometry.levelset.LevelSet() ;
             ls.Function = @(p)pkg.geometry.levelset.LevelSet.dunion(ls1.Function(p),ls2.Function(p)) ;
             LS = [ls1 ls2] ; bbox = cat(1,LS.BoundingBox) ;
             ls.BoundingBox = [min(bbox,[],1) ; max(bbox,[],1)] ;
             [ls.EdgeFcns,ls.Kinks] = mergeEdges(ls1,ls2) ;
+            ls.EdgeFcns = [ls.EdgeFcns ls1.intersectEdges(ls2)] ;
             ls = ls.cleanContour ;
         end
         
-        function ls = and(ls1,ls2)
+        function ls = substraction(ls1,ls2)
+        % LevelSet function UNION (ls = ls1 & ~ls2) ;
+            ls = pkg.geometry.levelset.LevelSet() ;
+            ls.Function = @(p)pkg.geometry.levelset.LevelSet.ddiff(ls1.Function(p),ls2.Function(p)) ;
+            ls.BoundingBox = ls1.BoundingBox ;
+            [ls.EdgeFcns,ls.Kinks] = mergeEdges(ls1,ls2) ;
+            ls.EdgeFcns = [ls.EdgeFcns ls1.intersectEdges(ls2)] ;
+            ls = ls.cleanContour ;
+        end
+        
+        function ls = intersection(ls1,ls2)
         % LevelSet function INTERSECTION
             ls = pkg.geometry.levelset.LevelSet() ;
             ls.Function = @(p)pkg.geometry.levelset.LevelSet.dintersect(ls1.Function(p),ls2.Function(p)) ;
             LS = [ls1 ls2] ; bbox = cat(3,LS.BoundingBox) ;
             ls.BoundingBox = [max(bbox(1,:,:),[],3) ; min(bbox(2,:,:),[],3)] ;
             [ls.EdgeFcns,ls.Kinks] = mergeEdges(ls1,ls2) ;
+            ls.EdgeFcns = [ls.EdgeFcns ls1.intersectEdges(ls2)] ;
             ls = ls.cleanContour ;
+        end
+        
+        function ls = merge(ls1,ls2,k)
+        % Merge (union) two levelsets using smooth minimums
+        % see https://iquilezles.org/articles/smin/
+            ls = pkg.geometry.levelset.LevelSet() ;
+            ls.Function = @(p)pkg.geometry.levelset.LevelSet.smoothmin(ls1.Function(p),ls2.Function(p),k) ;
+            LS = [ls1 ls2] ; bbox = cat(1,LS.BoundingBox) ;
+            ls.BoundingBox = [min(bbox,[],1) ; max(bbox,[],1)] + [-1;1]*k ;
+            [ls.EdgeFcns,ls.Kinks] = mergeEdges(ls1,ls2) ;
+            %ls.EdgeFcns = [ls.EdgeFcns ls1.intersectEdges(ls2)] ;
+            ls = ls.cleanContour ;
+        end
+        
+        % OVERRIDE BUILTIN FUNCTIONS
+        function ls = or(ls1,ls2)
+        % LevelSet function UNION
+            ls = ls1.union(ls2) ;
+        end
+        
+        function ls = and(ls1,ls2)
+        % LevelSet function INTERSECTION
+            ls = ls1.intersection(ls2) ;
         end
         
         function ls = not(ls)
         % LevelSet function INVERSION
-            ls.Function = @(p)-ls.Function(p) ; 
-            ls.BoundingBox = Inf*[-1 -1 ; 1 1] ;
+            ls = ls.inversion() ;
         end
         
         function ls = plus(ls1,ls2)
         % LevelSet function UNION
-            ls = ls1 | ls2 ;
+            ls = ls1.union(ls2) ;
         end
         
         function ls = uplus(ls)
@@ -86,12 +145,12 @@ classdef LevelSet < matlab.mixin.Heterogeneous
         
         function ls = minus(ls1,ls2)
         % LevelSet function SUBSTRACTION
-            ls = ls1 & ~ls2 ;
+            ls = ls1.substraction(ls2) ;
         end
         
         function ls = uminus(ls)
         % LevelSet function OPPOSITE
-            ls = ~ls ;
+            ls = ls.inversion() ;
         end
     end
     
@@ -139,6 +198,42 @@ classdef LevelSet < matlab.mixin.Heterogeneous
                 end
         end
         
+        function [edgeFcns,kinks] = intersectEdges(ls1,ls2)
+        % Compute edge functions to be added when intersecting two (3D) levelsets
+            edgeFcns = {} ; kinks = [] ;
+            if ls1.nCoord<3 || ls2.nCoord<3 ; return ; end
+        % One levelset will be discretized 
+            % Base shape might have fastest meshBoundary overloads
+%             isComplexShape = ismember({class(ls1) class(ls2)},{...
+%                                         'pkg.geometry.levelset.LevelSet'...
+%                                         }) ;
+            isComplexShape = [isempty(ls1.SurfMeshFcn) isempty(ls2.SurfMeshFcn)] ;
+            % Another option is the lvlst with the smallest discretization length
+            [smallestLength,hasSmallestLength] = min([ls1.defaultDiscreteLength,ls2.defaultDiscreteLength]) ;
+            % Choose the most adapted levelset to discretize
+            LS = [ls1 ls2] ;
+            if sum(isComplexShape)~=1 % if all ore none of the lvlst is a complex shape
+                ls_d = LS(hasSmallestLength) ;
+                ls_a = LS(3-hasSmallestLength) ;
+            else
+                ls_d = LS(~isComplexShape) ;
+                ls_a = LS(isComplexShape) ;
+            end
+        % Discretize the chose levelset boundary
+            bndmesh = ls_d.meshBoundary(smallestLength) ;
+        % Compute its intersection curves with the other levelset
+            cutmesh = bndmesh.cut(ls_a.Function).ON ;
+            [~,bndCrv] = cutmesh.boundaryCurves ;
+        % Create new edge functions with these curves
+            maxAngle = pi/3 ; % edge split angle threshold
+            for ee = 1:numel(bndCrv)
+                polyfcn = pkg.geometry.levelset.polylineEdgeFunctions(cutmesh.Nodes(bndCrv{ee},:),maxAngle) ;
+                for ff = 1:numel(polyfcn)
+                    edgeFcns{end+1} = @(t)ls_d.toBoundary(polyfcn{ff}(t)) ; % re-project to boundary to reduce discretization error
+                end
+            end
+        end
+        
         function ls = cleanContour(ls,dtol)
         % Clean the levelset edge functions and singular points
             if nargin<3 ; dtol = 1e-3*norm(range(ls.BoundingBox,1)) ; end
@@ -150,9 +245,11 @@ classdef LevelSet < matlab.mixin.Heterogeneous
                 end
                 ls.EdgeFcns(~valid) = [] ;
             % Delete invalid kinks
-                [~,on] = ls.inside(ls.Kinks,dtol) ;
-                ls.Kinks(~on,:) = [] ;
-                ls.Kinks = uniquetol(ls.Kinks,1e-6,'ByRows',1) ;
+                if ~isempty(ls.Kinks)
+                    [~,on] = ls.inside(ls.Kinks,dtol) ;
+                    ls.Kinks(~on,:) = [] ;
+                    ls.Kinks = uniquetol(ls.Kinks,1e-6,'ByRows',1) ;
+                end
         end
     end
     
@@ -165,13 +262,18 @@ methods
     % grad: [nP nCoord]
         if nargin<3 ; normalize = true ; end
         if nargin<4 ; geps = norm(range(this.BoundingBox,1))*1e-6 ; end
-    % Mean gradient over a quad
+    % Mean gradient over a quad/hex
         fd = @this.Function ; % distance function
         if isempty(p) ; dgrad = [] ; return ; end
-        sp = [-1 -1 ; 1 -1 ; 1 1 ; -1 1]/2 ; % [4 nCoord] shifts
-        pp = permute(p,[1 3 2]) + permute(sp,[3 1 2])*geps ; % [nP 4 nCoord] all points
-        d = reshape(fd(reshape(pp,[],size(p,2))),size(p,1),[]) ; % [nP 4] distance values
-        dgrad = (d*sp)*(1/geps) ; % [nP 2] gradient
+        switch this.nCoord
+            case 2
+                sp = [-1 -1 ; 1 -1 ; 1 1 ; -1 1]/2 ; % [nG=4 nCoord] shifts
+            case 3
+                sp = [-1 -1 -1 ; 1 -1 -1 ; 1 1 -1 ; -1 1 -1 ; -1 -1 1 ; 1 -1 1 ; 1 1 1 ; -1 1 1]/2 ; % [nG=8 nCoord] shifts
+        end
+        pp = permute(p,[1 3 2]) + permute(sp,[3 1 2])*geps ; % [nP nG nCoord] all points
+        d = reshape(fd(reshape(pp,[],size(p,2))),size(p,1),[]) ; % [nP nG] distance values
+        dgrad = (d*sp)*(1/geps) ; % [nP nCoord] gradient
     % Normalize
         normGrad = sqrt(sum(dgrad.^2,2)) ;
         if normalize
@@ -221,10 +323,12 @@ end
     end
 %% GEOMETRY UTILS
     methods
+        function n = nCoord(this) ; n = size(this.BoundingBox,2) ; end
+        
         function [in,on] = inside(this,P,dtol) 
         % Return a logical vector for points inside the domain / on the
         % domain boundary (up to dtol)
-            if nargin<3 ; dtol = 1e-6*norm(range(this.BoundingBox,1)) ; end
+            if nargin<3 ; dtol = defaultTolerance(this) ; end
         % first test in bbox
             bboxtol = this.BoundingBox + [-1;1]*dtol ;
             P = P(:,1:size(bboxtol,2),:,:,:,:,:,:) ;
@@ -235,37 +339,64 @@ end
             in(in) = in(in) & d<dtol ;
             if nargout>1 ; on(on) = on(on) & abs(d)<dtol ; end
         end
+        
+        function P = toBoundary(this,P,dtol)
+        % Project a set of points to the closest levelset boundary
+            if nargin<3 ; dtol = defaultTolerance(this) ; end
+            maxIt = 100 ;
+            outBND = true(size(P,1),1) ;
+            it = 1 ;
+            while it<maxIt && any(outBND)
+                Pi = P(outBND,:) ;
+                d = this.Function(Pi) ;
+                g = this.gradient(Pi) ;
+                P(outBND,:) = Pi - d.*g ;
+                outBND(outBND) = abs(d)>dtol ; % convergence test
+                it = it+1 ;
+            end
+        end
     end
     
 %% GEOMETRY DISCRETIZATION
     methods
-        function h0 = defaultDiscreteLength(this)
-        % Return a default discretization length
-            h0 = norm(range(this.BoundingBox,1))/40 ;
+        function tol = defaultTolerance(this)
+        % Default tolerance for geometrical operations
+            tol = 1e-6*norm(range(this.BoundingBox,1)) ;
         end
         
-        function P = populate(this,dx,distrib,fh)
+        function h0 = defaultDiscreteLength(this)
+        % Return a default discretization length
+            h0 = max(range(this.BoundingBox,1))/30 ;
+        end
+        
+        function P = populate(this,dx,distrib,fh,bnd)
         % Fill the function domain with a distribution of points
         % dx: spacing between points
         % distrib: point distribution
         %   - 'grid' : uniform square grid
         %   - 'iso' : isotropic grid of equilateral triangles
         %   - 'random' : random distribution
-            bboxDims = range(this.BoundingBox,1) ;
-            nDims = size(this.BoundingBox,2) ;
+        % fh: (optional) local point spacing (edge length function)
+        % bnd: populate levelset boundaries only
+            L = range(this.BoundingBox,1) ; nCoord = numel(L) ;
             if nargin<2 ; dx = defaultDiscreteLength(this) ; end
             if nargin<3 ; distrib = 'grid' ; end
-            dx = dx(:)'.*ones(1,nDims) ;
+            if nargin<4 || isempty(fh) ; fh = @(P)dx ; end
+            if nCoord~=2 && strcmp(distrib,'iso') 
+                warning('No isotropic grid for dimension>2. Switching to regular grid') ;
+                distrib = 'grid' ;
+            end
+            dx = dx(:)'.*ones(1,nCoord) ;
             % Initial distribution
                 if strcmp(distrib,'iso') 
                     dx = [1 sqrt(3)/2].*dx ; 
                 end
                 switch distrib
                     case 'random'
-                        nC = numel(bboxDims) ;
-                        bboxDims = max(bboxDims) ;
-                        N = ceil((bboxDims./dx(1))^nC) ;
-                        P = rand(N,nC).*bboxDims + this.BoundingBox(1,:) ;
+                        nC = numel(L) ;
+                        L = max(L) ;
+                        N = ceil((L./dx(1))^nC) ;
+                        P = rand(N,nC).*L + this.BoundingBox(1,:) ;
                     otherwise % 'grid' or 'iso'
                         % Initial grid
                             P = arrayfun(@colon ...
@@ -274,25 +405,36 @@ end
                                     ,this.BoundingBox(2,:)+dx ...
                                     ,'UniformOutput',false) ;
                             [P{:}] = ndgrid(P{:}) ;
-                            P = cat(nDims+1,P{:}) ;
+                            P = cat(nCoord+1,P{:}) ;
                         % Shift if isotropic
                             if strcmp(distrib,'iso') 
                                 P(:,1:2:end,1) = P(:,1:2:end,1) + dx(1)/2 ; 
                             end
                         % Reshape to a list of points
-                            P = reshape(P,[],nDims) ;
+                            P = reshape(P,[],nCoord) ;
                 end
             % Cull distribution if needed
                 if nargin>3 
-                    prob = prod(dx)./fh(P).^nDims ; % rejection probability
+                    prob = prod(dx)./fh(P).^nCoord ; % rejection probability
                     pkeep = rand(size(P,1),1)<=prob ; % sampling
                     P = P(pkeep,:) ;
                 end
             % Cull outside points
                 P = P(this.inside(P),:) ;
+            % If only boundaries needs to be populated
+                if nargin>4 && bnd
+                    on = abs(this.Function(P)) < .5*sqrt(nCoord)*fh(P) ;
+                    P = P(on,:) ;
+                    P = this.toBoundary(P) ;
+                    P = uniquetol(P,this.defaultTolerance,'ByRows',true,'DataScale',1) ;
+                end
         end
         
-        function P = discretizeContour(this,dl,tol)
+        function P = discretizeContour(varargin) % legacy compatibility
+            P = discretizeEdges(varargin{:}) ; 
+        end
+        
+        function P = discretizeEdges(this,dl,tol)
         % Divide the contour edges by a target distance dl
         % dl can be a scalar or a function handle dl = @(p)dl(P)
         % tol is used to cull dupplicate points: P = unique(P,tol*min(dl))
@@ -339,13 +481,25 @@ end
         end
         
         function skel = skeleton(this,varargin)
-        % Return the levelset skeleton
+        % Return the levelset skeleton (2D only !)
             skel = pkg.geometry.Skeleton(this,varargin{:}) ;
         end
         
         function mesh = mesh(this,varargin)
         % Mesh the levelset
             mesh = pkg.geometry.mesh.distMesh(this,varargin{:}) ;
+        end
+        
+        function mesh = meshBoundary(this,varargin)
+        % Mesh the levelset boundary
+            if nargin<3 && ~isempty(this.SurfMeshFcn) 
+                if nargin==2 ; dx = varargin{1} ; 
+                else ; dx = this.defaultDiscreteLength() ; 
+                end
+                mesh = this.SurfMeshFcn(dx) ;
+            else
+                mesh = this.mesh(varargin{:},'bnd_only',true) ;
+            end
         end
     end
     
@@ -359,25 +513,37 @@ end
                 if isempty(bbox) ; bbox = [min(this.Kinks,[],1) ; min(this.Kinks,[],1)] ; end
                 if isempty(bbox) ; bbox = [-1 -1 ; 1 1] ; end
                 if norm(range(bbox,1))<eps ; bbox = bbox + [-1 -1 ; 1 1] ; end
-                if nargin<2 ; N = 100*range(bbox,1)/norm(range(bbox,1)) ; end
-                N = round(N).*[1 1] ;
-                xx = linspace(bbox(1,1),bbox(2,1),N(1)) ;
-                yy = linspace(bbox(1,2),bbox(2,2),N(2)) ;
-                [XX,YY] = meshgrid(xx,yy) ;
-                DD = reshape(this.Function([XX(:) YY(:)]),size(XX)) ;
-                h = surf(XX,YY,DD,'facecolor','interp','edgecolor','none','FaceAlpha',0.5) ;
-            % BoundingBox
-                bboxP = [bbox(1,:) ; bbox(2,1) bbox(1,2) ; bbox(2,:) ; bbox(1,1) bbox(2,2)] ;
-                h(end+1) = plot(bboxP([1:end,1],1),bboxP([1:end,1],2),':r') ;
+                if nargin<2 
+                    N = 1e5 ; L = range(bbox,1) ;
+                    dx = (prod(L)/N)^(1/3) ;
+                    N = round(L./dx) ; 
+                end
+                N = round(N).*ones(1,this.nCoord) ;
+            % Discretization
+                mesh = pkg.geometry.mesh.GridMesh(bbox,uint16(N)) ;
+                X = mesh.Nodes ; D = this.Function(X) ;
+                pl = plot(mesh,'VisibleFaces','all','VisibleEdges','none') ;
+                switch this.nCoord
+                    case 3 
+                        pl.FaceAlpha = .05 ;
+                    otherwise
+                        pl.Deformation = [0 0 1].*D ;
+                end
+                pl.CData = D ; 
+                pl.EdgeStyle = ':' ;
+                h = pl.GraphicGroup ;
             % Contour at d=0
                 t = linspace(0,1,1000) ;
                 for ee = 1:numel(this.EdgeFcns)
                     Pc = this.EdgeFcns{ee}(t) ;
-                    h(end+1) = plot(Pc(:,1),Pc(:,2),'k') ;
+                    Pc(:,end+1:3) = 0 ; % 3D coordinates
+                    h(end+1) = plot3(Pc(:,1),Pc(:,2),Pc(:,3),'k') ;
                 end
             % Kinks
                 if ~isempty(this.Kinks)  
-                    h(end+1) = plot(this.Kinks(:,1),this.Kinks(:,2),'.k','markersize',25) ;
+                    Pk = this.Kinks ;
+                    Pk(:,end+1:3) = 0 ; % 3D coordinates
+                    h(end+1) = plot3(Pk(:,1),Pk(:,2),Pk(:,3),'.k','markersize',25) ;
                 end
             % Display prop
                 set(h,'Parent',gca) ; 
