@@ -229,7 +229,6 @@ clf ; plot(X,dF)
 
 
 %% INTEGRATION SCHEME ON BSPLINE MESHES
-
 ord = 10 ; deg = 3 ;
 elmt =  pkg.geometry.mesh.elements.BSpline('1D',ord,deg) ;
 
