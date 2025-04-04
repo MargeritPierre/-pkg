@@ -155,8 +155,10 @@ end
 function test
 
 %% CREATE A 1D BI-SPLINE ELEMENT AND PLOT ITS SHAPE FUNCTIONS & DERIVATIVES
-
-elmt = pkg.geometry.mesh.elements.BSpline('1D',4,2) ;
+ord = 6 ; deg = 3
+elmt = pkg.geometry.mesh.elements.BSpline('1D',ord,deg) ;
+clf ; plot(elmt,'shapefunctions')
+%%
 der = 1 ; 
 %clf ; plot(elmt,'shapefunctions') ;
 
