@@ -1,9 +1,10 @@
-function DATA = interp(DATA,IDX,ORDER,EXTRAP)
+function [DATA,iMAT] = interp(DATA,IDX,ORDER,EXTRAP)
 % Interpolation of a (N+P)D-array DATA with real-valued ND-indices IDX
 % ORDER is the interpolation order <TODO>
 % DATA [n1 n2 ... N p1 p2 ... P]
 % IDX [nIdx Nt]
 % data [nIdx p1 p2 ... P]
+% iMAT sparse interpolation matrix [nIdx prod(N)]
 %
 % The interpolation is achieved using a polynomial kernel:
 %   Pn(x) = Xn(x).a (for any coordinates x)

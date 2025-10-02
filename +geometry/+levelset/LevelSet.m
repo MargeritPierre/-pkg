@@ -253,9 +253,9 @@ classdef LevelSet < matlab.mixin.Heterogeneous
         end
     end
     
-%% LEVELSET GRADIENT
+%% LEVELSET DERIVATIVES
 methods
-    function dgrad = gradient(this,p,normalize,geps)
+    function [dgrad,normGrad] = gradient(this,p,normalize,geps)
     % Return the levelset gradient estimated at points p [nP nCoord]
     % normalize: boolean, normalize so that norm(grad)=1
     % geps: discrete step
@@ -264,16 +264,18 @@ methods
         if nargin<4 ; geps = norm(range(this.BoundingBox,1))*1e-6 ; end
     % Mean gradient over a quad/hex
         fd = @this.Function ; % distance function
-        if isempty(p) ; dgrad = [] ; return ; end
+        if isempty(p) ; dgrad = [] ; normGrad = [] ; return ; end
         switch this.nCoord
             case 2
                 sp = [-1 -1 ; 1 -1 ; 1 1 ; -1 1]/2 ; % [nG=4 nCoord] shifts
+                w = sp ; % [nG=4 nCoord] weights
             case 3
                 sp = [-1 -1 -1 ; 1 -1 -1 ; 1 1 -1 ; -1 1 -1 ; -1 -1 1 ; 1 -1 1 ; 1 1 1 ; -1 1 1]/2 ; % [nG=8 nCoord] shifts
+                w = [-1 -1 -1 ; 1 -1 -1 ; 1 1 -1 ; -1 1 -1 ; -1 -1 1 ; 1 -1 1 ; 1 1 1 ; -1 1 1]/4 ; % [nG=8 nCoord] weights
         end
         pp = permute(p,[1 3 2]) + permute(sp,[3 1 2])*geps ; % [nP nG nCoord] all points
         d = reshape(fd(reshape(pp,[],size(p,2))),size(p,1),[]) ; % [nP nG] distance values
-        dgrad = (d*sp)*(1/geps) ; % [nP nCoord] gradient
+        dgrad = (d*w)*(1/geps) ; % [nP nCoord] gradient
     % Normalize
         normGrad = sqrt(sum(dgrad.^2,2)) ;
         if normalize
@@ -284,9 +286,51 @@ methods
     % If not, shift the scheme by geps/2
         if any(tooSmallNorm) 
             warning('Vanishing gradient found !') ; 
-            dgrad(tooSmallNorm,:) = this.gradient(p(tooSmallNorm,:)+geps/2,normalize,geps) ;
+            [dgrad(tooSmallNorm,:),normGrad(tooSmallNorm)] = this.gradient(p(tooSmallNorm,:)+geps/2,normalize,geps) ;
         end
     end
+    
+%     function [dgrad2,detH] = hessian(this,p,normalize,geps)
+%     % Return the levelset hessian estimated at points p [nP nCoord]
+%     % normalize: boolean, normalize so that det(dgrad2)=1
+%     % geps: discrete step
+%     % dgrad2: [nP nCoord nCoord]
+%         if nargin<3 ; normalize = true ; end
+%         if nargin<4 ; geps = norm(range(this.BoundingBox,1))*1e-6 ; end
+%     % Mean gradient over a centered quad/hex
+%         fd = @this.Function ; % distance function
+%         if isempty(p) ; d2grad2 = [] ; detH = [] ; return ; end
+%         switch this.nCoord
+%             case 2
+%                 sp = [-1 -1 ; 1 -1 ; 1 1 ; -1 1 ; 0 0] ; % [nG=5 nCoord] shifts
+%                 w = [1 1 ; 1 1 ; 1 1 ; 1 1 ; -2 -2] ; % [nG=5 nCoord] weights
+%             case 3
+%                 sp = [-1 -1 -1 ; 1 -1 -1 ; 1 1 -1 ; -1 1 -1 ; -1 -1 1 ; 1 -1 1 ; 1 1 1 ; -1 1 1 ; 0 0 0]/2 ; % [nG=9 nCoord] shifts
+%         end
+%         pp = permute(p,[1 3 2]) + permute(sp,[3 1 2])*geps ; % [nP nG nCoord] all shifted points
+%         d = reshape(fd(reshape(pp,[],size(p,2))),size(p,1),[]) ; % [nP nG] distance values
+%         dgrad = (d*w)*(1/geps) ; % [nP nCoord] gradient
+%     % Normalize
+%         normGrad = sqrt(sum(dgrad.^2,2)) ;
+%         if normalize
+%             dgrad = dgrad./normGrad ;
+%         end
+%     % Check if the gradient is OK
+%         tooSmallNorm = normGrad<1e-1 ;
+%     % If not, shift the scheme by geps/2
+%         if any(tooSmallNorm) 
+%             warning('Vanishing gradient found !') ; 
+%             dgrad(tooSmallNorm,:) = this.gradient(p(tooSmallNorm,:)+geps/2,normalize,geps) ;
+%         end
+%     end
+%     
+%     function K = curvature(this,p,geps)
+%     % Return the levelset local gaussian curvature estimated at points p [nP nCoord]
+%     % geps: discrete step
+%     % K: [nP 1]
+%         if nargin<3 ; normalize = true ; end
+%         if nargin<4 ; geps = norm(range(this.BoundingBox,1))*1e-6 ; end
+%     end
 end
 
 %% GEOMETRICAL OPERATIONS
@@ -302,11 +346,11 @@ end
         end
         
         function this = rotate(this,theta)
-        % Rotate the levelset with an angle theta arounf the origin
+        % Rotate the levelset with an angle theta around the origin
             R = [cos(theta) sin(theta) ; -sin(theta) cos(theta)] ;
             this.Function = @(p)this.Function(p*R') ;
-            this.BoundingBox = this.BoundingBox*R ;
-            this.BoundingBox = [min(this.BoundingBox,[],1) ; max(this.BoundingBox,[],1)] ;
+            nodes = pkg.geometry.mesh.GridMesh(this.BoundingBox,uint8(1)).Nodes*R ;
+            this.BoundingBox = [min(nodes,[],1) ; max(nodes,[],1)] ;
             for ee = 1:numel(this.EdgeFcns)
                 this.EdgeFcns{ee} = @(t)this.EdgeFcns{ee}(t)*R ;
             end

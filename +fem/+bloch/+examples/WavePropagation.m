@@ -118,7 +118,7 @@
     C = pkg.fem.bloch.stiffness(E,G) ;
     [K00,K0i,Kij,M,P] = pkg.fem.bloch.FEM(mesh,C,rho,[],perVec) ;
 %% Compute the wavenumbers and modes
-    [K,U,omega] = pkg.fem.bloch.solve(mesh,K00,K0i,Kij,M,P,freq,dir,nModes) ;
+    [K,U,omega] = pkg.fem.bloch.solve(K00,K0i,Kij,M,P,freq,dir,nModes) ;
 % DISPLAY RESULTS
     clf ;
 % Theoretical wavenumbers

@@ -622,7 +622,7 @@ methods
 % if ie is NOT given (or empty), P_or_E is global and is localized in the mesh first
 % if ie IS given, P_or_E is condidered to be local coordinates
 
-    function [E,features] = parseLocalizationArgs(this,varargin)
+    function [E,features,X] = parseLocalizationArgs(this,varargin)
     % Get all localization from a given set of input arguments
     % varargin = {P_or_E,ie,features,extrap,X,tol}
         if nargin<2 ; varargin = {this.centroid} ; end
@@ -638,43 +638,22 @@ methods
         features = features.subpart(ie) ; 
     end
     
-    function M = interpMat(this,P_or_E,ie,features,extrap,X,tol)
+    function M = interpMat(this,varargin)
     % Return a sparse interpolation matrix so that f(P) = M*f_n
-        if nargin<2 ; P_or_E = this.centroid ; end
-        if nargin<3 ; ie = [] ; end
-        if nargin<4 || isempty(features) || ~numel(features) ; features = this.Elems ; end
-        if nargin<5 ; extrap = nargin<3 ; end
-        if nargin<6 ; X = this.Nodes ; end
-        if nargin<7 ; tol = this.defaultTolerance(X) ; end
-    % Localize the given points in the mesh if needed
-        if isempty(ie)  ; [E,ie] = this.localize(P_or_E,features,extrap,X,tol) ;
-        else ; E = P_or_E ; end
-        features = features.subpart(ie) ; 
+        [E,features] = parseLocalizationArgs(this,varargin{:}) ; 
     % Evaluate the element shape functions at the given coordinates
         M = sparse(size(E,1),this.nNodes) ;
         for typeIdx = 1:features.nTypes
             elmtType = features.Types(typeIdx) ;
             elmtIdx = find(features.TypeIdx==typeIdx) ;
             N = elmtType.evalAt(E(elmtIdx,1:elmtType.nDims)) ;
-            M = M + sparse(repmat(elmtIdx(:),[1 elmtType.nNodes]),double(features.NodeIdx(elmtIdx,1:elmtType.nNodes)),N,size(P_or_E,1),this.nNodes) ;
+            M = M + sparse(repmat(elmtIdx(:),[1 elmtType.nNodes]),double(features.NodeIdx(elmtIdx,1:elmtType.nNodes)),N,size(E,1),this.nNodes) ;
         end
     end
     
-    function D = diffMat(this,P_or_E,ie,features,extrap,X,tol)
-    % Return sparse matrices M so that df(P)/dx_i = M{i}*f_n
-        if nargin<3 ; ie = [] ; end
-        if nargin<4 ; features = this.Elems ; end
-        if nargin<5 ; extrap = false ; end
-        if nargin<6 ; X = this.Nodes ; end
-        if nargin<7 ; tol = this.defaultTolerance(X) ; end
-    % Localize the given points in the mesh
-        if nargin<2 % element centroids
-            E = features.getListOf('centroid') ;
-        else % given points
-            if isempty(ie)  ; [E,ie] = this.localize(P_or_E,features,extrap,X,tol) ;
-            else ; E = P_or_E ; end
-            features = features.subpart(ie) ; 
-        end
+    function D = diffMat(this,varargin)
+    % Return sparse matrices M so that df(P)/dx_i = D{i}*f_n
+        [E,features,X] = parseLocalizationArgs(this,varargin{:}) ; 
     % Evaluate the element shape function gradient at the given coordinates
         D = repmat({sparse(size(E,1),this.nNodes)},[this.nCoord 1]) ;
         xe = features.dataAtIndices(X) ; % [nE nMaxNodesByElmt nCoord] 
@@ -693,26 +672,39 @@ methods
         end
     end
     
-    function M = diff2Mat(this,P_or_E,ie,features,extrap,X,tol)
+    function [D,F] = localDiffMat(this,varargin)
+    % Return sparse matrices M so that df(P)/dy_j = D{j}*f_n 
+    % where y_j ith the j-th LOCAL coordinate of the element
+    % this is used for example for the derivation of functions in shell/curve elements
+        [E,features,X] = parseLocalizationArgs(this,varargin{:}) ; 
+    % Evaluate the element shape function gradient at the given coordinates
+        D = repmat({sparse(size(E,1),this.nNodes)},[this.Elems.Types.nDims 1]) ;
+        xe = features.dataAtIndices(X) ; % [nE nMaxNodesByElmt nCoord] 
+        F = this.getOrthoFrames(features,E) ; % local element frames [nElmtCoord nCoord nE] [v1;v2;v3]
+        for typeIdx = 1:features.nTypes
+            elmtType = features.Types(typeIdx) ;
+            elmtIdx = find(features.TypeIdx==typeIdx) ;
+            dN_de = elmtType.evalJacobianAt(E(elmtIdx,1:elmtType.nDims)) ; % [nE nElmtNodes nElmtDims]
+            dx_de = permute(sum(xe(elmtIdx,1:elmtType.nNodes,:).*permute(dN_de,[1 2 4 3]),2),[1 3 4 2]) ; % [nE nCoord nElmtDims] 
+            dy_de = permute(sum(permute(F(:,:,elmtIdx),[1 2 4 3]).*permute(dx_de,[4 2 3 1]),2),[1 3 4 2]) ; % [nElmtCoord nElmtDims nE] 
+            de_dy = pkg.math.pinv(dy_de) ; % [nElmtDims nElmtCoord nE]
+            dN_dy = permute(pkg.math.mtimes(permute(dN_de,[2 3 1]),de_dy),[3 1 2]) ; % [nE nElmtNodes nCoord]
+            iii = repmat(elmtIdx(:),[1 elmtType.nNodes]) ;
+            jjj = double(features.NodeIdx(elmtIdx,1:elmtType.nNodes)) ;
+            for cc = 1:elmtType.nDims
+                D{cc} = D{cc} + sparse(iii,jjj,dN_dy(:,:,cc),size(E,1),this.nNodes) ;
+            end
+        end
+    end
+    
+    function M = diff2Mat(this,varargin)
     % Return sparse matrices M so that d2f(P)/(dx_i.dx_j) = M{i,j}(P)*f_n
     % d2f_dx2 = (d_dx)(df_de.de_dx) = d2f_de2.de_dx.de_dx + df_de.(d_dx)(de_dx)
     %         = d2f_de2.iJ.iJ + df_de.d(iJ)_de.iJ
     %         = d2f_de2.iJ.iJ - df_de.iJ.H.iJ.iJ
     % iJ = de_dx is the inverse Jacobian
     % H = dJ_de = d2x_de2 is the Hessian
-        if nargin<3 ; ie = [] ; end
-        if nargin<4 ; features = this.Elems ; end
-        if nargin<5 ; extrap = false ; end
-        if nargin<6 ; X = this.Nodes ; end
-        if nargin<7 ; tol = this.defaultTolerance(X) ; end
-    % Localize the given points in the mesh
-        if nargin<2 % element centroids
-            E = features.getListOf('centroid') ;
-        else % given points
-            if isempty(ie)  ; [E,ie] = this.localize(P_or_E,features,extrap,X,tol) ;
-            else ; E = P_or_E ; end
-            features = features.subpart(ie) ; 
-        end
+        [E,features,X] = parseLocalizationArgs(this,varargin{:}) ; 
     % Evaluate the element shape function gradient at the given coordinates
         M = repmat({sparse(size(E,1),this.nNodes)},[this.nCoord this.nCoord]) ;
         xe = features.dataAtIndices(X) ; % [nE nMaxNodesByElmt nCoord] 
@@ -900,7 +892,7 @@ methods
         [W,ii] = features.getListOf('GaussIntegrationWeights') ;
         if ~isequal(ie,ii) ; error('Integration points and weights mismatch.') ; end
     % With the transformation jacobian
-        W = W.*detJacobian(this,E,ie,features,false,X) ;
+        W = W.*abs(detJacobian(this,E,ie,features,false,X)) ;
     end
     
     function [E,W,ie] = lumpedIntegration(this,features,X)
@@ -918,7 +910,7 @@ methods
         W = 1./features.nNodes ;
         W = W(ie) ;
     % With the transformation jacobian
-        W = W.*detJacobian(this,E,ie,features,false,X) ;
+        W = W.*abs(detJacobian(this,E,ie,features,false,X)) ;
     end
     
     function [E,W,ie,Ef,ff] = elemIntegration(this,features,X)
@@ -1463,7 +1455,7 @@ methods
             vec = xq(:,[2:end 1],:)-xq ; % [nE 4 mesh.nCoord]
             vec = vec./sqrt(sum(vec.^2,3)) ; % [nE 4 mesh.nCoord]
             scal = sum(vec.*vec(:,[2:end 1],:),3) ; % % [nE 4] should be in [0 1]
-        % Quad quality associated to the maximum angle deviation from 90°
+        % Quad quality associated to the maximum angle deviation from 90
             Q = 1-max(abs(scal),[],2) ; % [nE 1]
         % Sort edges by quad quality
             [~,ee] = sort(Q,'descend') ;

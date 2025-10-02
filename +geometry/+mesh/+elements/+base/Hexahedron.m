@@ -6,7 +6,7 @@ classdef Hexahedron < pkg.geometry.mesh.elements.base.BaseElement
     properties (SetAccess = protected)
         % Node local Coordinates [nNodes nDims]
         NodeLocalCoordinates = [0 0 0 ; 1 0 0 ; 1 1 0 ; 0 1 0 ; 0 0 1 ; 1 0 1 ; 1 1 1 ; 0 1 1]
-        % The list of faces [nFaces 4]
+        % The list of faces [nFaces 4] 
         Faces
         % The list of edges [nEdges 2] 
         Edges
@@ -25,7 +25,7 @@ classdef Hexahedron < pkg.geometry.mesh.elements.base.BaseElement
         function DER = evalDerivativeAt(this,E,ORD,~)
         % Evaluate the partial derivatives of order ORD = [o1 o2 ...] (:[1 nDims]) of 
         % shape functions at given local coordinates E:[nRows nDims]
-        % exemple: df(E)/(dx²dy) = DER(E,[2 1 0]) ;
+        % exemple: df(E)/(dx2dy) = DER(E,[2 1 0]) ;
             if nargin<3 ; ORD = [1 0 0] ; end
             if numel(ORD)~=3 ; error('Wrong derivation order argument (must be [1 nDims])') ; end
             if all(ORD==0) % No Derivative
@@ -61,7 +61,7 @@ classdef Hexahedron < pkg.geometry.mesh.elements.base.BaseElement
 % INTEGRATION QUADRATURE
     properties
         % Eight integration points (full integration)
-        GaussIntegrationPoints = 0.5*[1 1 1]+(1/2*sqrt(3))*[-1 -1 -1 ; 1 -1 -1 ; 1 1 -1 ; -1 1 -1 ; -1 -1 1 ; 1 -1 1 ; 1 1 1 ; -1 1 1] % [nGaussIntPts nDims]
+        GaussIntegrationPoints = 0.5*[1 1 1]+(.5/sqrt(3))*[-1 -1 -1 ; 1 -1 -1 ; 1 1 -1 ; -1 1 -1 ; -1 -1 1 ; 1 -1 1 ; 1 1 1 ; -1 1 1] % [nGaussIntPts nDims]
         GaussIntegrationWeights = (1/8)*[1 ; 1 ; 1 ; 1 ; 1 ; 1 ; 1 ; 1] % [nGaussIntPts 1]
     end
     

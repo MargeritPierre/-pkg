@@ -19,6 +19,7 @@ O = (starts(:)+ends(:)+lengths(:))'*0 ;
 starts = starts(:)' + O ;
 ends = ends(:)' + O ;
 lengths = lengths(:)' + O ;
+lengths(isnan(lengths)) = 0 ;
 
 % Individual lengths
 lengths = floor(lengths) ;
@@ -27,6 +28,7 @@ cumLengths = cumsum(lengths) ; % cummuative lengths
 
 % Steps
 steps = (ends-starts)./(lengths-1) ;
+steps(ends==starts) = 0 ;
 
 % Indices
 indices = 0:cumLengths(end)-1 ; % original indices

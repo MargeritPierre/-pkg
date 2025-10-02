@@ -33,33 +33,33 @@ else
     edges = [] ;
 end
 
-% Data splitting
-    % Data mapping in [0 1[
-    data = (data-min(data,[],1))./range(data,1)*(1-1/nData) ;
-    % node indices: [nData nLayers]
-    nodeIdx = [ones(nData,1) zeros(nData,order)] ;
-    for oo = 1:order
-        coord = mod(oo-1,nCoord)+1 ;
-        ni = (nodeIdx(:,oo)-min(nodeIdx(:,oo),[],1) + data(:,coord))*div ;
-        switch splitSpace
-            case 'index'
-                dd = nodeIdx(:,oo) + data(:,coord) ;
-                [~,si] = sort(dd) ;
-                ni = floor(linspace(0,1-1/nData,nData)*(div^oo)) + sum(nNodesInLayer(1:oo)) + 1 ;
-                nodeIdx(si,oo+1) = ni ;
-            case 'coordinate'
-                nodeIdx(:,oo+1) = floor(ni) + sum(nNodesInLayer(1:oo)) + 1 ;
-        end
-    end
-    nDataInNode = accumarray(nodeIdx(:),1,[nNodesTotal 1]) ;
-    [~,dataIdx] = sort(nodeIdx,1) ;
-    IDX = mat2cell(dataIdx(:),nDataInNode) ;
+% % Data splitting
+%     % Data mapping in [0 1[
+%     data = (data-min(data,[],1))./range(data,1)*(1-1/nData) ;
+%     % node indices: [nData nLayers]
+%     nodeIdx = [ones(nData,1) zeros(nData,order)] ;
+%     for oo = 1:order
+%         coord = mod(oo-1,nCoord)+1 ;
+%         ni = (nodeIdx(:,oo)-min(nodeIdx(:,oo),[],1) + data(:,coord))*div ;
+%         switch splitSpace
+%             case 'index'
+%                 dd = nodeIdx(:,oo) + data(:,coord) ;
+%                 [~,si] = sort(dd) ;
+%                 ni = floor(linspace(0,1-1/nData,nData)*(div^oo)) + sum(nNodesInLayer(1:oo)) + 1 ;
+%                 nodeIdx(si,oo+1) = ni ;
+%             case 'coordinate'
+%                 nodeIdx(:,oo+1) = floor(ni) + sum(nNodesInLayer(1:oo)) + 1 ;
+%         end
+%     end
+%     nDataInNode = accumarray(nodeIdx(:),1,[nNodesTotal 1]) ;
+%     [~,dataIdx] = sort(nodeIdx,1) ;
+%     IDX = mat2cell(dataIdx(:),nDataInNode) ;
 
 % Data splitting
     % Data mapping in [0 1[
     data = (data-min(data,[],1))./range(data,1)*(1-1/nData) ;
     % node indices: [nData nLayers]
-    nodeIdx = linspace(0,1-1/nData,nData)'*nNodesInLayer(:)' ;
+%     nodeIdx = linspace(0,1-1/nData,nData)'*nNodesInLayer(:)' ;
     nodeIdx = [ones(nData,1) zeros(nData,order)] ;
     for oo = 1:order
         coord = mod(oo-1,nCoord)+1 ;

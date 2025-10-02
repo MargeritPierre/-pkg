@@ -14,7 +14,7 @@
  
 % 3D base shapes
     lvlst = pkg.geometry.levelset.Sphere([0,1,0],1) ; % (center,radius)
-    lvlst = pkg.geometry.levelset.Box([0,1,1.5],[1 2 1.5]) ; % (center,sides)
+%     lvlst = pkg.geometry.levelset.Box([0,1,1.5],[1 2 1.5]) ; % (center,sides)
     %lvlst = pkg.geometry.levelset.Cylinder(.74,[1.3 2.2 0 ; 0 0 3.2],true) ; % (radius,axis end pts,is finite)
     
 % Enhance BBox
@@ -159,6 +159,12 @@ lvlst = merge(ls1,ls2,1/10) ;
     %caxis([-1 1]*0.01)
     
     
+%% TEST GRADIENT COMPUTATION
+    N = 2e5; 
+    p = lvlst.BoundingBox(1,:) + rand(N,lvlst.nCoord).*range(lvlst.BoundingBox,1) ;
+    [g,ng] = lvlst.gradient(p,false) ;
+    error_normgrad = norm(ng-1)/sqrt(N)
+    
 %% LEVEL SET CONTOUR DISCRETIZATION
     dx = norm(range(lvlst.BoundingBox,1))/50 ;
     %dx = @(p)dx-1.5*(p(:,2)/norm(range(lvlst.BoundingBox,1))).^2 ;
@@ -211,7 +217,7 @@ lvlst = merge(ls1,ls2,1/10) ;
                                         ...,'qmin',0*0.005 ...
                                         ...,'Fscale',1.2 ...
                                         ... ,'bndCons',false ...
-                                        ,'t_dmax',-.02 ...
+                                        ,'t_dmax',-.02*1 ...
                                         ,'bnd_only',lvlst.nCoord==3 ...
                                         ) ;
     profile off
