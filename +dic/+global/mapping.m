@@ -1,7 +1,7 @@
 function [N,INSIDE] = mapping(img,mesh,edgeMargin,tol) 
 % Global mapping of a mesh in a function
 % inputs:
-%   - img is a 2D image
+%   - img is an ND image (only the first mesh.nCoord dimensions will be accounted)
 %   - mesh is a pkg.geometry.mesh.Mesh
 %   - edgeMargin is used to map pixels outside the mesh (localized near edges)
 %   - tol is the grid indices localization tolerance
@@ -15,7 +15,9 @@ function [N,INSIDE] = mapping(img,mesh,edgeMargin,tol)
     if nargin<4 ; tol = 1e-6 ; end 
     
 % Infos (backup because the mesh may change)
-    [nI,nJ] = size(img) ;
+    nCoord = mesh.nCoord ;
+    ii2xx = [2,1,3:nCoord] ; % index order to coordinate order xx = ii(:,ii2xx)
+    iisz = size(img,1:nCoord) ;
     nNodes = mesh.nNodes ;
     nElems = mesh.nElems ;
     
@@ -74,29 +76,54 @@ end
     bbox = [min(xe,[],2) max(xe,[],2)] ; % [nElems 2 nCoord]
     bbox = bbox + [-1 1]*tol ; % add the tolerance
 % Which pixel is in which element bounding box ?
-    [ji,ee] = pkg.data.domainIndices(bbox) ;
+    [xx,ee] = pkg.data.domainIndices(bbox) ;
+    ii = xx(:,ii2xx) ;
 % Cull pixels out of image
-    valid = all(ji>0 & ji<=[nJ nI],2) ;
-    ji = ji(valid,:) ;
+    valid = all(ii>0 & ii<=iisz,2) ;
+    ii = ii(valid,:) ;
+    xx = xx(valid,:) ;
     ee = ee(valid) ;
-% Localize in local element coordinates
-    [E,ie] = mesh.localize(ji ...
-                            ,mesh.Elems ... localize in elements
-                            ,false ... do not extrapolate
-                            ,mesh.Nodes ... in the reference config
-                            ,tol ... with reduced tolerance
-                            ,(1:numel(ee))' ... for all points
-                            ,ee ... with respect to previously found elements
-                            ) ;  
+% Localize in local element coordinates (this is the bottleneck !)
+    if numel(ee)<1e7 % localize all pixels in all elements
+        [E,ie] = mesh.localize(xx ...
+                                ,mesh.Elems ... localize in elements
+                                ,false ... do not extrapolate
+                                ,mesh.Nodes ... in the reference config
+                                ,tol ... with reduced tolerance
+                                ,(1:numel(ee))' ... for all points
+                                ,ee ... with respect to previously found elements
+                                ) ;  
+    else % the problem does not fit in memory.. loop over elements
+        wtbr = waitbar(0,'Localization...') ;
+        [uee,allidx] = uniquetol(ee,tol,'DataScale',1,'OutputAllIndices',true) ;
+        E = cell(numel(uee),1) ;
+        ttt = tic ;
+        for eee = 1:numel(uee)
+            E{eee}  = mesh.localize(xx ...
+                                ,mesh.Elems ... localize in elements
+                                ,false ... do not extrapolate
+                                ,mesh.Nodes ... in the reference config
+                                ,tol ... with reduced tolerance
+                                ,allidx{eee} ... for all points in the element bounding box
+                                ,repmat(uee(eee),[numel(allidx{eee}) 1]) ... with respect to previously found elements
+                                ) ;  
+            if toc(ttt)>.5 ; wtbr = waitbar(eee/numel(uee),wtbr) ; ttt = tic ; end
+        end 
+        % ee is already sorted by construction, just concatenate the results
+        E = cat(1,E{:}) ;
+        ie = repelem(uee,cellfun(@numel,allidx)) ;
+        delete(wtbr) ;
+    end
                         
 % Cull invalid pixels
     valid = all(~isnan(E),2) ;
     E = E(valid,:) ;
     ie = ie(valid) ;
-    ji = ji(valid,:) ;
+    ii = ii(valid,:) ;
     
 % Linear indices
-    idx = sub2ind([nI nJ],ji(:,2),ji(:,1)) ;  
+    iic = num2cell(ii,1) ;
+    idx = sub2ind(iisz,iic{:}) ; 
     
 % Sort linear indices
     [idx,is] = sort(idx,'ascend') ;
@@ -106,7 +133,7 @@ end
 % Shape functions matrix
     Np = mesh.interpMat(E,ie) ;
     [pp,nn,vv] = find(Np) ;
-    N = sparse(idx(pp),nn,vv,nI*nJ,mesh.nNodes) ;
+    N = sparse(idx(pp),nn,vv,prod(iisz),mesh.nNodes) ;
     
 % IF EDGE MARGINS HAVE BEEN ADDED
 if edgeMargin 
@@ -118,12 +145,12 @@ if edgeMargin
 end
     
 % INSIDE
-    INSIDE = sparse(idx,ie,1,nI*nJ,nElems) ;
+    INSIDE = sparse(idx,ie,1,prod(iisz),nElems) ;
     
 % Mean over localizations
     nLoc = sum(INSIDE,2) ;
     valid = find(nLoc>0) ;
-    m = sparse(valid,valid,1./nLoc(valid),nI*nJ,nI*nJ) ;
+    m = sparse(valid,valid,1./nLoc(valid),prod(iisz),prod(iisz)) ;
     N = m*N ;
     
 end

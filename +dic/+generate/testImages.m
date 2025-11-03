@@ -6,10 +6,10 @@
 % Dimensions
     totalLength = 30 ;
     totalWidth = 20 ;
-    usedWidth = 20 ;
+    usedWidth = 10 ;
     usedLength = 10 ;
-    holeRadius = 2/10*usedWidth/2 ;
-    
+    holeRadius = 5/10*usedWidth/2 ;
+    % 
 % Dependent dims
     R = (totalWidth-usedWidth)/2 ;
     L = (totalLength-usedLength)/2 ;
@@ -116,7 +116,7 @@ delete(findobj(gcf,'type','hggroup')) ;
     axis tight
     if 0 % plot the sum Interpolation matrix (should be 1 in the domain)
         data = sum(N,2) ;
-    elseif 1 % plot an interpolated function
+    elseif 0 % plot an interpolated function
         data =  N*interpMesh.Nodes(:,1) ...
                ... N*interpMesh.Nodes(:,2) ...
                ... N*u(:,1) ...

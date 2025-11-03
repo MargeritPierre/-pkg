@@ -300,9 +300,13 @@ methods
                     tang = [3*tang(1,:)-tang(2,:) ; tang(1:end-1,:)+tang(2:end,:) ; 3*tang(end,:)-tang(end-1,:)] ; % node tangents
                     tang = tang./sqrt(sum(tang.^2,2)) ; % normalize
                 % Rotation vector R = vectprod(t_1,t_n)
-                    R = pkg.math.vectprod(tang(1,:),tang,2) ; % [nPts nC]
+                    % R = pkg.math.vectprod(tang(1,:),tang,2) ; % [nPts nC]
+                    R = pkg.math.vectprod(tang([1,1:end-1],:),tang,2) ; % [nPts nC]
                 % Rotation matrices
                     F = pkg.math.rotmat(-R) ; % [3 3 nPts]
+                    for pp = 2:size(F,3)
+                        F(:,:,pp) = F(:,:,pp-1)*F(:,:,pp) ;
+                    end
                     if nC<3 ; F = F(1:nC,1:nC,:) ; end
                 % Apply
                     x = pkg.math.innerprod(x-CRV(1,:),F) + permute(CRV,[3 2 1]) ;

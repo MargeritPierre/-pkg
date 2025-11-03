@@ -26,6 +26,7 @@ function [K,U,omega] = solve(K00,K0i,Kij,M,freq,dir,nModes)
     for dd = 1:nDir
     % Projected stiffnesses
         n = dir(dd,:) ;
+        n(end+1:numel(K0i)) = 0 ;
         nn = n(:).*n(:)' ; 
         K1 = reshape(vK0i*n(:),[nDOFs nDOFs]) ;
         K2 = reshape(vKij*nn(:),[nDOFs nDOFs]) ;

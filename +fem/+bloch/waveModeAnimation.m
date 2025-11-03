@@ -27,6 +27,7 @@ function [pl] = waveModeAnimation(mesh,Kdir,U,plothandle,extrude_L_or_N,gif_on_c
                 ,'marker','.'...
                 ,'EdgeColor','r'...
                 ,'MarkerSize',20 ...
+                ,'handlevisibility','off' ...
                 ,'tag',tag) ;
     
     % Data points
@@ -34,7 +35,7 @@ function [pl] = waveModeAnimation(mesh,Kdir,U,plothandle,extrude_L_or_N,gif_on_c
     
     % Build the 3D mesh
     wavemesh = copy(mesh) ;
-    if extrude_L_or_N>0
+    if any(extrude_L_or_N>0)
         if size(Kdir,2)==mesh.nCoord % architectured material, tile the unit cell
             extrude_N = uint8(extrude_L_or_N).*ones(1,mesh.nCoord,'uint8') ;
             repmesh = pkg.geometry.mesh.GridMesh(extrude_N-1) ; 
@@ -60,6 +61,7 @@ function [pl] = waveModeAnimation(mesh,Kdir,U,plothandle,extrude_L_or_N,gif_on_c
     clf(fiig,'reset') ;
     set(fiig,'tag',tag+"_fig") ;
     axis equal tight off ; 
+    set(gca,'Clipping','off')
     if wavemesh.nCoord>2 ; view([30 30]) ; end
     caxis([-1 1]*amp) ;
         
@@ -78,12 +80,13 @@ function [pl] = waveModeAnimation(mesh,Kdir,U,plothandle,extrude_L_or_N,gif_on_c
     
     % 3D mode
     mode3D = @(pp)repmat(U(:,:,pp),[wavemesh.nNodes/mesh.nNodes 1]).*exp(-1i*sum(Kdir(pp,:).*wavemesh.Nodes,2,'omitnan')) ;
+    normalize = @(u)u./max(abs(u(:))) ;
     curs.UserData = mode3D(1) ;
     
     % Cursor function
     fig.WindowButtonMotionFcn = @(src,evt)cellfun(@(c)c(src,evt),{...
                     @(src,evt)set(curs,'vertices',pts(pkg.ui.closestToMouse(pts,ax),:)) ...
-                    @(src,evt)set(curs,'UserData',mode3D(pkg.ui.closestToMouse(pts,ax))) ...
+                    @(src,evt)set(curs,'UserData',amp*normalize(mode3D(pkg.ui.closestToMouse(pts,ax)))) ...
                                 },'uni',false);
 
     % Timer that makes the wave phase turn                        
@@ -98,8 +101,8 @@ function [pl] = waveModeAnimation(mesh,Kdir,U,plothandle,extrude_L_or_N,gif_on_c
     % Delete timer on figure(s) close
     addlistener(pl.Parent,'ObjectBeingDestroyed',@(src,evt)delete(ti)) ;
     addlistener(pl.Parent,'ObjectBeingDestroyed',@(src,evt)set(fig,'WindowButtonMotionFcn',[])) ;
-%     addlistener(curs.Parent,'ObjectBeingDestroyed',@(src,evt)delete(ti)) ;
-%     addlistener(curs.Parent,'ObjectBeingDestroyed',@(src,evt)set(fig,'WindowButtonMotionFcn',[])) ;
+    addlistener(curs.Parent,'ObjectBeingDestroyed',@(src,evt)delete(ti)) ;
+    addlistener(curs.Parent,'ObjectBeingDestroyed',@(src,evt)set(fig,'WindowButtonMotionFcn',[])) ;
 
     % record gif on click
     if nargin>5 && gif_on_click
@@ -107,16 +110,31 @@ function [pl] = waveModeAnimation(mesh,Kdir,U,plothandle,extrude_L_or_N,gif_on_c
                         @(src,evt)clickFcn ...
                     },'uni',false);
         addlistener(pl.Parent,'ObjectBeingDestroyed',@(src,evt)set(fig,'WindowButtonDownFcn',[])) ;
+        frame = annotation(gcf,'rectangle',[0 0 1 1],'linewidth',5,'Color','none') ;
     end
 
     function clickFcn
+        cc = copyobj(curs,curs.Parent) ;
+        cc.Tag = 'mode' ;
+        nGifs = numel(findall(cc.Parent,'tag','mode')) ;
+        clr = cc.Parent.ColorOrder(mod(nGifs-1,end-1)+1,:) ;
+        cc.EdgeColor = clr ;
+        frame.Color = clr ;
+        % txt = text(cc.XData,cc.YData,cc.ZData...
+        %                 ,"\boldmath $" + num2str(nGifs) + "$" ...
+        %                 ,'Color','w' ...
+        %                 ,'BackgroundColor',cc.EdgeColor ...
+        %                 ) ;
+
         stop(ti) ;
         IMG = {} ;
         for tt = 0:timerPeriod:1/animFreq-eps
             set(pl,'Deformation',defShape(tt),'CData',sqrt(sum(defShape(tt).^2,2)))
             IMG{end+1} = getframe(fiig) ;
         end
-        pkg.export.gif(IMG,[],'DelayTime',timerPeriod)
+        filename = "mode_"+num2str(nGifs)+".gif" ;
+        pkg.export.gif(IMG,filename,'DelayTime',timerPeriod)
+        frame.Color = 'none' ;
         start(ti) ;
     end
 end

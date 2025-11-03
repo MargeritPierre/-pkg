@@ -553,7 +553,7 @@ methods
                     it = it + 1 ;
                     e_nc = e(notConverged,:) ; % [nE_nc nElmtDims]
                     xe_nc = xe(:,notConverged,:) ; % [nCoord nE_nc nElmtNodes]
-                % Shape function evalutation (+derivatives)
+                % Shape function evaluation (+derivatives)
                     N = elmtType.evalAt(e_nc) ; % [nE_nc nElmtNodes]
                     dN_de = elmtType.evalJacobianAt(e_nc) ; % [nE_nc nElmtNodes nElmtDims]
                     if methodOrder>1 ; d2N_de2 = elmtType.evalHessianAt(e_nc) ; end % [nE_nc nElmtNodes nElmtDims nElmtDims]
@@ -1327,6 +1327,7 @@ methods
         if nargin<3 ; tol = this.defaultTolerance() ; end
         if nargin<4 ; inner = false ; end % not implemented, should test only outer nodes if false
         nPerVec = size(vPer,1) ;
+        vPer(:,end+1:this.nCoord) = 0 ; % force dimension to match
     % Process each vector individually
         T = cell(1,nPerVec) ;
         for pp = 1:nPerVec

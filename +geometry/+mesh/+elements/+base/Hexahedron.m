@@ -68,7 +68,7 @@ classdef Hexahedron < pkg.geometry.mesh.elements.base.BaseElement
 %% CONSTRUCTOR / DESTRUCTOR
     methods
         function this = Hexahedron(varargin)
-            warning('This element has incorrect quadrature scheme !!')
+            %warning('This element has incorrect quadrature scheme !!')
         % Constructor
             this.Edges = pkg.geometry.mesh.elements.ElementTable('Types',pkg.geometry.mesh.elements.base.Bar ...
                                                             ,'Indices',[1 1 2 ; ...

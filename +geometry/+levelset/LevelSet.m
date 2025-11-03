@@ -234,14 +234,22 @@ classdef LevelSet < matlab.mixin.Heterogeneous
             end
         end
         
-        function ls = cleanContour(ls,dtol)
+        function ls = cleanContour(ls,dtol,ltol)
         % Clean the levelset edge functions and singular points
             if nargin<3 ; dtol = 1e-3*norm(range(ls.BoundingBox,1)) ; end
+            if nargin<4 ; ltol = ls.defaultTolerance() ; end
             % Delete invalid edges
                 valid = true(size(ls.EdgeFcns)) ;
                 for ee = 1:numel(ls.EdgeFcns)
-                    [~,on] = ls.inside(ls.EdgeFcns{ee}((0:.1:1)'),dtol) ;
+                    xe = ls.EdgeFcns{ee}((0:.1:1)') ;
+                % edges outside the levelset
+                    [~,on] = ls.inside(xe,dtol) ;
                     if any(~on) ; valid(ee) = false ; end
+                % too short edges
+                    Le = sum(sqrt(sum(diff(xe,1,1).^2,2))) ;
+                    if Le<ltol 
+                        valid(ee) = false ; 
+                    end 
                 end
                 ls.EdgeFcns(~valid) = [] ;
             % Delete invalid kinks
@@ -255,13 +263,14 @@ classdef LevelSet < matlab.mixin.Heterogeneous
     
 %% LEVELSET DERIVATIVES
 methods
-    function [dgrad,normGrad] = gradient(this,p,normalize,geps)
+    function [dgrad,normGrad] = gradient(this,p,normalize,geps,check_grad_norm)
     % Return the levelset gradient estimated at points p [nP nCoord]
     % normalize: boolean, normalize so that norm(grad)=1
     % geps: discrete step
     % grad: [nP nCoord]
-        if nargin<3 ; normalize = true ; end
-        if nargin<4 ; geps = norm(range(this.BoundingBox,1))*1e-6 ; end
+        if nargin<3 || isempty(normalize) ; normalize = true ; end
+        if nargin<4 || isempty(geps) ; geps = norm(range(this.BoundingBox,1))*1e-6 ; end
+        if nargin<5 || isempty(check_grad_norm) ; check_grad_norm = true ; end
     % Mean gradient over a quad/hex
         fd = @this.Function ; % distance function
         if isempty(p) ; dgrad = [] ; normGrad = [] ; return ; end
@@ -284,7 +293,7 @@ methods
     % Check if the gradient is OK
         tooSmallNorm = normGrad<1e-1 ;
     % If not, shift the scheme by geps/2
-        if any(tooSmallNorm) 
+        if check_grad_norm && any(tooSmallNorm) 
             warning('Vanishing gradient found !') ; 
             [dgrad(tooSmallNorm,:),normGrad(tooSmallNorm)] = this.gradient(p(tooSmallNorm,:)+geps/2,normalize,geps) ;
         end
@@ -405,7 +414,9 @@ end
     methods
         function tol = defaultTolerance(this)
         % Default tolerance for geometrical operations
-            tol = 1e-6*norm(range(this.BoundingBox,1)) ;
+            tol = sqrt(eps) ;
+            if isempty(this.BoundingBox) || any(isinf(this.BoundingBox(:))) ; return ; end
+            tol = tol*norm(range(this.BoundingBox,1)) ; % normalize
         end
         
         function h0 = defaultDiscreteLength(this)
@@ -426,14 +437,17 @@ end
             if nargin<2 ; dx = defaultDiscreteLength(this) ; end
             if nargin<3 ; distrib = 'grid' ; end
             if nargin<4 || isempty(fh) ; fh = @(P)dx ; end
-            if nCoord~=2 && strcmp(distrib,'iso') 
-                warning('No isotropic grid for dimension>2. Switching to regular grid') ;
-                distrib = 'grid' ;
-            end
+            % if nCoord~=2 && strcmp(distrib,'iso') 
+            %     warning('No isotropic grid for dimension>2. Switching to regular grid') ;
+            %     distrib = 'grid' ;
+            % end
             dx = dx(:)'.*ones(1,nCoord) ;
             % Initial distribution
                 if strcmp(distrib,'iso') 
-                    dx = [1 sqrt(3)/2].*dx ; 
+                    switch nCoord
+                        case 2 ; dxi = [1 sqrt(3)/2].*dx ; 
+                        case 3 ; dxi = [1 sqrt(3)/2 sqrt(6)/3].*dx ;
+                    end
                 end
                 switch distrib
                     case 'random'
@@ -444,27 +458,28 @@ end
                     otherwise % 'grid' or 'iso'
                         % Initial grid
                             P = arrayfun(@colon ...
-                                    ,this.BoundingBox(1,:)-dx ...
-                                    ,dx ...
-                                    ,this.BoundingBox(2,:)+dx ...
+                                    ,this.BoundingBox(1,:)-dxi ...
+                                    ,dxi ...
+                                    ,this.BoundingBox(2,:)+dxi ...
                                     ,'UniformOutput',false) ;
                             [P{:}] = ndgrid(P{:}) ;
-                            P = cat(nCoord+1,P{:}) ;
                         % Shift if isotropic
                             if strcmp(distrib,'iso') 
-                                P(:,1:2:end,1) = P(:,1:2:end,1) + dx(1)/2 ; 
+                                P{1}(:,1:2:end,:) = P{1}(:,1:2:end,:) + dxi(1)/2 ; 
+                                if nCoord>2 
+                                    P{2}(:,:,1:2:end) = P{2}(:,:,1:2:end) + dxi(2)/2 ;
+                                end
                             end
+                            P = cat(nCoord+1,P{:}) ;
                         % Reshape to a list of points
                             P = reshape(P,[],nCoord) ;
                 end
             % Cull distribution if needed
                 if nargin>3 
-                    prob = prod(dx)./fh(P).^nCoord ; % rejection probability
-                    pkeep = rand(size(P,1),1)<=prob ; % sampling
+                    prob = prod(dx)./fh(P).^nCoord ; % non-rejection probability
+                    pkeep = rand(size(P,1),1)<prob ; % sampling
                     P = P(pkeep,:) ;
                 end
-            % Cull outside points
-                P = P(this.inside(P),:) ;
             % If only boundaries needs to be populated
                 if nargin>4 && bnd
                     on = abs(this.Function(P)) < .5*sqrt(nCoord)*fh(P) ;
@@ -472,6 +487,8 @@ end
                     P = this.toBoundary(P) ;
                     P = uniquetol(P,this.defaultTolerance,'ByRows',true,'DataScale',1) ;
                 end
+            % Cull outside points
+                P = P(this.inside(P),:) ;
         end
         
         function P = discretizeContour(varargin) % legacy compatibility
@@ -550,7 +567,7 @@ end
     
 %% VIZUALIZATION
     methods
-        function h = plot(this,N)
+        function [h,pl] = plot(this,N)
         % Simple plot of the LevelSet
             % Function surface
                 bbox = this.BoundingBox ;
@@ -563,19 +580,22 @@ end
                     N = round(L./dx) ; 
                 end
                 N = round(N).*ones(1,this.nCoord) ;
+                h = gobjects(0) ;
             % Discretization
-                mesh = pkg.geometry.mesh.GridMesh(bbox,uint16(N)) ;
-                X = mesh.Nodes ; D = this.Function(X) ;
-                pl = plot(mesh,'VisibleFaces','all','VisibleEdges','none') ;
-                switch this.nCoord
-                    case 3 
-                        pl.FaceAlpha = .05 ;
-                    otherwise
-                        pl.Deformation = [0 0 1].*D ;
+                if prod(N)>0
+                    mesh = pkg.geometry.mesh.GridMesh(bbox,uint16(N)) ;
+                    X = mesh.Nodes ; D = this.Function(X) ;
+                    pl = plot(mesh,'VisibleFaces','all','VisibleEdges','none') ;
+                    switch this.nCoord
+                        case 3 
+                            pl.FaceAlpha = .05 ;
+                        otherwise
+                            pl.Deformation = [0 0 1].*D ;
+                    end
+                    pl.CData = D ; 
+                    pl.EdgeStyle = ':' ;
+                    h(end+1) = pl.GraphicGroup ;
                 end
-                pl.CData = D ; 
-                pl.EdgeStyle = ':' ;
-                h = pl.GraphicGroup ;
             % Contour at d=0
                 t = linspace(0,1,1000) ;
                 for ee = 1:numel(this.EdgeFcns)

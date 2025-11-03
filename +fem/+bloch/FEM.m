@@ -2,7 +2,10 @@
 % u(x,t) = U(x)*exp(1i*omega*t - 1i*k*x)
 % (K00 + k.K1 + k^2.K2 - w^2.M).U = 0
 
-function [K00,K0i,Kij,M,P] = FEM(mesh,C,rho,sig,perVec)
+function [K00,K0i,Kij,M,P] = FEM(mesh,C,rho,sig,perVec,nUCoord,nKCoord)
+
+    if nargin<6 ; nUCoord = 3 ; end
+    if nargin<7 ; nKCoord = 3 ; end
 
     % Mesh interpolation
     [ee,we,ie] = mesh.integration() ;
@@ -40,11 +43,11 @@ function [K00,K0i,Kij,M,P] = FEM(mesh,C,rho,sig,perVec)
 
     % STIFFNESS MATRICES
     K00 = B0'*CW*B0 ; % zero-order matrix
-    K0i =  cell(3,1) ; % first-order matrices
-    Kij = cell(3,3) ; % second order matrices
-    for ii = 1:3 
+    K0i =  cell(nKCoord,1) ; % first-order matrices
+    Kij = cell(nKCoord,nKCoord) ; % second order matrices
+    for ii = 1:nKCoord 
         K0i{ii} = B0'*CW*Bi{ii} + Bi{ii}'*CW*B0 ;
-        for jj = 1:3
+        for jj = 1:nKCoord
             Kij{ii,jj} = Bi{ii}'*CW*Bi{jj} ; % Kij{ii,jj} = Kij{jj,ii}'
         end
     end
@@ -84,12 +87,12 @@ function [K00,K0i,Kij,M,P] = FEM(mesh,C,rho,sig,perVec)
     % Update stiffness matrices
         k00 = G0'*sigW*G0 ;
         K00 = K00 + blkdiag(k00,k00,k00) ;
-        for ii = 1:3 
+        for ii = 1:nKCoord 
             Gi = kron(sparse(ii,1,1,3,1),Gk) ;
             k0i = G0'*sigW*Gi ;
             k0i = k0i + k0i' ; % symmetric hermitian
             K0i{ii} = K0i{ii} + blkdiag(k0i,k0i,k0i) ;
-            for jj = 1:3
+            for jj = 1:nKCoord
                 Gj = kron(sparse(jj,1,1,3,1),Gk) ;
                 kij = Gi'*sigW*Gj ;
                 kij = kij + kij' ; % symmetric hermitian
@@ -100,29 +103,22 @@ function [K00,K0i,Kij,M,P] = FEM(mesh,C,rho,sig,perVec)
 
     % PERIODICITY MATRICES
     if nargin<5 ; perVec = diag(range(mesh.boundingBox,1)) ; end
-    % OLD VERSION, MODIFIED ON 29.11.2024
-%     P = cell(size(perVec,1),1) ;
-%     if ~isempty(perVec)
-%         [P{:}] = mesh.perNodeMat(perVec) ;
-%     end
-%     [P{end+1:3}] = deal(speye(mesh.nNodes)) ; 
-%     % Complete periodicity
-%     P = P{1}*P{2}*P{3} ;
-    % NEW VERSION
     if isempty(perVec) ; P = speye(mesh.nNodes) ;
     else ; P = mesh.perNodeMat(perVec) ;
     end
     % THEN ...
     P(:,sum(P,1)==0) = [] ; % delete unused DOFs
-    P = blkdiag(P,P,P) ; % periodicity on the 3 coordinates (constant coordinate frame)
+    P = repmat({P},[1 nUCoord]) ;
+    P = blkdiag(P{:}) ; % periodicity on the 3 coordinates (constant coordinate frame)
+    P3D = P ; if nUCoord<3 ; P3D(end+1:3*mesh.nNodes,:) = 0 ; end
     
     % APPLY PERIODICITY
-    M = P'*M*P ;
-    K00 = P'*K00*P ;
-    for ii = 1:3
-        K0i{ii} = P'*K0i{ii}*P ;
-        for jj = 1:3
-            Kij{ii,jj} = P'*Kij{ii,jj}*P ;
+    M = P3D'*M*P3D ;
+    K00 = P3D'*K00*P3D ;
+    for ii = 1:nKCoord
+        K0i{ii} = P3D'*K0i{ii}*P3D ;
+        for jj = 1:nKCoord
+            Kij{ii,jj} = P3D'*Kij{ii,jj}*P3D ;
         end
     end
     

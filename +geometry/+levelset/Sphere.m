@@ -10,7 +10,7 @@ methods
         this.BoundingBox = center + radius.*[-1 ; 1] ;
         this.Kinks = [] ;
         this.EdgeFcns = {} ;
-        this.SurfMeshFcn = @(dx)pkg.geometry.mesh.shapes.sphere(dx).scale(radius).move(center) ;
+        this.SurfMeshFcn = @(dx)pkg.geometry.mesh.shapes.sphere(dx/radius).scale(radius).move(center) ;
     end
 end
     

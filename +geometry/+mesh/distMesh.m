@@ -158,6 +158,10 @@ function mesh = distMesh(lvlst,varargin)
         meshPlot.VisibleNodes = 'all' ;
         meshPlot.BoundaryEdges.EdgeColor = 'r' ;
         meshPlot.BoundaryEdges.LineWidth = 2 ;
+        if mesh.nCoord>2 && ~bnd_only
+            meshPlot.FaceAlpha = 0 ;
+            meshPlot.VisibleEdges = 'all' ;
+        end
         meshPlot.Selected.Nodes = 1:nfix ;
         if debug ; meshPlot.UpdateOnMeshChange = true ; end
     end
@@ -314,7 +318,8 @@ end
 % NESTED FUNCTIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-    function buildMesh()
+    function buildMesh(remesh)
+        if nargin<1 || isempty(remesh) ; remesh = false ; end
         % Init node modifications
             validNodes = true(mesh.nNodes,1) ;
             newNodes = [] ;
@@ -358,9 +363,8 @@ end
             if bnd_only ; newNodes = lvlst.toBoundary(newNodes) ; end
             mesh.Nodes = [mesh.Nodes(validNodes,:) ; newNodes] ;
         % Delaunay (tri.tet)angulation with the new nodes
-            remesh = ~all(validNodes) || ~isempty(newNodes) || mesh.nElems==0 || any(mesh.detJacobian<=0) ;
+            remesh = remesh || ~all(validNodes) || ~isempty(newNodes) || mesh.nElems==0 || any(mesh.detJacobian<=0) ;
             if remesh
-%                 tri = delaunayn(mesh.Nodes,{'QJ','Qt','Qbb','Qc'}) ;
                 tri = delaunay(mesh.Nodes) ;
                 idx = padarray(tri,[0 1],1,'pre') ;
                 elems = pkg.geometry.mesh.elements.ElementTable('Types',elmtType,'Indices',idx) ;
@@ -387,6 +391,7 @@ end
                 validElems = true(mesh.nElems,1) ;
                 Xt = mesh.centroid ;
                 rdXt = fd(Xt)./fh(Xt) ; % relative signed distance of the triangle centroid
+                validElems = validElems & rdXt<=abs(t_dmax) ;
             end
         % Remove simplices with a quality < qmin
         % Quality is the ratio between inside and outside circle radius
@@ -433,7 +438,7 @@ end
 
     function [r,dr_dx] = edgeLengthCost
     % Edge Length difference
-    % phi(x) = || Le(x) - Fs*fh(xm) ||²
+    % phi(x) = || Le(x) - Fs*fh(xm) ||
     % Le(x) is the current edge length
     % xm is the edge centroid
         xe = mesh.Edges.dataAtIndices(mesh.Nodes) ;
@@ -455,7 +460,7 @@ end
 
     function [r,dr_dx] = laplacianSmoothingCost
     % Laplacian smoothing
-    % phi(x) = || x - Xc(x) ||²
+    % phi(x) = || x - Xc(x) ||
     % Xc(x) is the mean of the attached triangle's barycenters
     % weighted by the element size (area)
         e2n = mesh.elem2node ;
