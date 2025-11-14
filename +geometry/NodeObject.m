@@ -297,6 +297,7 @@ methods
             case 'angle' % x = Rotate(x-crv(1),angle(tang_1,tang_i)) + crv
                 % Tangent vectors [nPts nC]
                     tang = diff(CRV,1,1) ; % segments
+                    tang = tang./sqrt(sum(tang.^2,2)) ; % normalize
                     tang = [3*tang(1,:)-tang(2,:) ; tang(1:end-1,:)+tang(2:end,:) ; 3*tang(end,:)-tang(end-1,:)] ; % node tangents
                     tang = tang./sqrt(sum(tang.^2,2)) ; % normalize
                 % Rotation vector R = vectprod(t_1,t_n)

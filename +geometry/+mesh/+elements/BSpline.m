@@ -69,7 +69,7 @@ classdef BSpline < pkg.geometry.mesh.elements.AbstractElement
         function DER = evalDerivativeAt(this,E,ORD,~)
         % Evaluate the partial derivatives of order ORD = [o1 o2 ...] (:[1 nDims]) of 
         % shape functions at given local coordinates E:[nRows nDims]
-        % exemple: df(E)/(dx²dy) = DER(E,[2 1 0]) ;
+        % exemple: df(E)/(dxï¿½dy) = DER(E,[2 1 0]) ;
             if nargin<3 ; ORD = [1 zeros(1,this.nDims-1)] ; end
             if numel(ORD)~=this.nDims ; error('Wrong derivation order argument (must be [1 nDims])') ; end
             if all(ORD==0) % No Derivative

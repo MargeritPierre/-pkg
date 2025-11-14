@@ -28,8 +28,8 @@ function [K,U,omega] = solve(K00,K0i,Kij,M,freq,dir,nModes)
         n = dir(dd,:) ;
         n(end+1:numel(K0i)) = 0 ;
         nn = n(:).*n(:)' ; 
-        K1 = reshape(vK0i*n(:),[nDOFs nDOFs]) ;
-        K2 = reshape(vKij*nn(:),[nDOFs nDOFs]) ;
+        K1 = reshape(vK0i*sparse(n(:)),[nDOFs nDOFs]) ;
+        K2 = reshape(vKij*sparse(nn(:)),[nDOFs nDOFs]) ;
     % For each frequency..
         for ww = 1:nFreq
             K0 = omega(ww)^2*M-K00 ;

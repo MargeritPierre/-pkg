@@ -61,7 +61,7 @@ methods
     % Evaluation performed by recursive finite differences. 
     % When possible, it is preferred to override this method to provide
     % analytical derivatives !
-    % exemple: df(E)/(dx²dy) = DER(E,[2 1 0]) ;
+    % exemple: df(E)/(dxï¿½dy) = DER(E,[2 1 0]) ;
         if nargin<3 ; ORD = [1 zeros(1,this.nDims-1)] ; end
         if nargin<4 ; delta = this.defaultDelta ; end
         if numel(ORD)~=this.nDims ; error('Wrong derivation order argument (must be [1 nDims])') ; end
@@ -97,7 +97,7 @@ methods
     % E = [nE nDims]
     % delta = optionnal, for finite diff derivatives (see above)
     % G = [nE nNodes nDims nDims]
-    % So that d²N_(dei.dej) = H(:,:,i,j)*Ne
+    % So that dï¿½N_(dei.dej) = H(:,:,i,j)*Ne
     % If only H is queried, then H is the hessian matrix (with
     % symmetric values duplicated)
     % Otherwise, ORD is the orders of derivations corresponding to each
@@ -210,7 +210,7 @@ methods
             midNode = permute(mean(nodes,2,'omitnan'),[2 3 1]) ; % [1 nDims nFeatures]
             if this.nDims==2 % 2D elements -> edge normals
                 tangent = permute(diff(nodes(:,1:2,:),1,2),[2 3 1]) ; % Tangent vector [1 nDims nFeatures]
-                normals = [tangent(:,2,:) -tangent(:,1,:)] ; % 90° clockwise rotation
+                normals = [tangent(:,2,:) -tangent(:,1,:)] ; % 90ï¿½ clockwise rotation
             else % 3D elements -> Face normals
                 T = zeros(this.nDims,2,features.nElems) ;
                 for ff = 1:features.nElems

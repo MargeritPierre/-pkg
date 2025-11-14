@@ -603,7 +603,11 @@ methods
                 dist = reshape(dist,nPts,nElems,[]) ; 
             case 'custom' % let it as it has been asked, do nothing
             otherwise % keep only the closest element
-                [~,ind] = sort(dist,'ascend') ;
+                ce = this.centroid(features) ; % element centroids
+                eldist2 = sum((ce(ie,:)' - P).^2,1) ;
+                eldist2(isnan(dist)) = NaN ;
+                [~,ind] = sort(eldist2,'ascend') ;
+                % [~,ind] = sort(dist,'ascend') ; % old version
                 [ip,ia] = unique(ip(ind),'first') ;
                 ind = ind(ia) ;
                 uE = NaN(nPts,size(E,2)) ; uE(ip,:) = E(ind,:) ; E = uE ;

@@ -1,4 +1,4 @@
-function [pl] = waveModeAnimation(mesh,Kdir,U,plothandle,extrude_L_or_N,gif_on_click)
+function [pl] = waveModeAnimation(mesh,Kdir,U,plothandle,extrude_L_or_N_or_vecs,gif_on_click)
 % INTERACTIVE ANIMATION OF BLOCH WAVE MODES
     tag = "waveAnim" ;
     amp = .05.*norm(range(mesh.Nodes,1)) ;
@@ -6,14 +6,14 @@ function [pl] = waveModeAnimation(mesh,Kdir,U,plothandle,extrude_L_or_N,gif_on_c
     animFreq = .5  ;
     
 % Unit cell replication option
-    if nargin>=5 && any(extrude_L_or_N)
-        if islogical(extrude_L_or_N) % extrude==true
-            extrude_L_or_N = 3.5*norm(range(mesh.boundingBox,1)) ;
+    if nargin>=5 && any(extrude_L_or_N_or_vecs(:))
+        if islogical(extrude_L_or_N_or_vecs) % extrude==true
+            extrude_L_or_N_or_vecs = 3.5*norm(range(mesh.boundingBox,1)) ;
 %         elseif isinteger(extrude_L_or_N) % number of unit cells
 %             extrude_L_or_N = 0 ; 
         end
     else
-        extrude_L_or_N = 0 ;
+        extrude_L_or_N_or_vecs = 0 ;
     end
 
     % Delete all previous objects
@@ -35,16 +35,20 @@ function [pl] = waveModeAnimation(mesh,Kdir,U,plothandle,extrude_L_or_N,gif_on_c
     
     % Build the 3D mesh
     wavemesh = copy(mesh) ;
-    if any(extrude_L_or_N>0)
+    if any(extrude_L_or_N_or_vecs(:)>0)
         if size(Kdir,2)==mesh.nCoord % architectured material, tile the unit cell
-            extrude_N = uint8(extrude_L_or_N).*ones(1,mesh.nCoord,'uint8') ;
-            repmesh = pkg.geometry.mesh.GridMesh(extrude_N-1) ; 
-            x = permute(repmesh.Nodes,[3 2 1]).*range(mesh.boundingBox(),1) ;
+            if isinteger(extrude_L_or_N_or_vecs) % tile over a regular grid
+                extrude_N = double(extrude_L_or_N_or_vecs).*ones(1,mesh.nCoord,'uint8') ;
+                repmesh = pkg.geometry.mesh.GridMesh(extrude_N-1) ; 
+                x = permute(repmesh.Nodes,[3 2 1]).*range(mesh.boundingBox(),1) ;
+            else % replication vectors are given
+                x = permute(extrude_L_or_N_or_vecs,[3 2 1]) ;
+            end
             wavemesh = mesh.replicate(mesh.Nodes+x,false) ;
-        else % waveguides, extrude along the remaingin directions
+        else % waveguides, extrude along the remaining directions
             de = median(mesh.elemSize(mesh.Edges)) ;
             for cc = mesh.nCoord+1:3
-                wavemesh = wavemesh.extrude(extrude_L_or_N*full(sparse(1,wavemesh.nCoord+1,1,1,3)),ceil(extrude_L_or_N/de)) ;
+                wavemesh = wavemesh.extrude(extrude_L_or_N_or_vecs*full(sparse(1,wavemesh.nCoord+1,1,1,3)),ceil(extrude_L_or_N_or_vecs/de)) ;
             end
         end
     end
@@ -68,7 +72,7 @@ function [pl] = waveModeAnimation(mesh,Kdir,U,plothandle,extrude_L_or_N,gif_on_c
     % Display
     pl0 = plot(wavemesh,'VisibleFaces','none','EdgeWidth',.05,'VisibleEdges','none') ;
     pl = plot(wavemesh,'VisibleEdges','none') ;
-    if extrude_L_or_N==0
+    if extrude_L_or_N_or_vecs==0
         pl.VisibleEdges = 'all' ;
     end
     

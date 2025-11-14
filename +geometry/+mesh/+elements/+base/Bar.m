@@ -24,7 +24,7 @@ classdef Bar < pkg.geometry.mesh.elements.base.BaseElement
         function DER = evalDerivativeAt(this,E,ORD,~)
         % Evaluate the partial derivatives of order ORD = [o1 o2 ...] (:[1 nDims]) of 
         % shape functions at given local coordinates E:[nRows nDims]
-        % exemple: df(E)/(dx²dy) = DER(E,[2 1 0]) ;
+        % exemple: df(E)/(dxï¿½dy) = DER(E,[2 1 0]) ;
             if nargin<3 ; ORD = 1; end
             if numel(ORD)~=1 ; error('Wrong derivation order argument (must be scalar)') ; end
             if ORD==0 % No Derivative
@@ -39,8 +39,8 @@ classdef Bar < pkg.geometry.mesh.elements.base.BaseElement
     
 % INTEGRATION QUADRATURE
     properties
-        GaussIntegrationPoints = 0.5 % [nGaussIntPts nDims]
-        GaussIntegrationWeights = 1 % [nGaussIntPts 1]
+        GaussIntegrationPoints = 0.5*[1;1]+0.5*[-1;1]/sqrt(3) % [nGaussIntPts nDims]
+        GaussIntegrationWeights = 0.5*[1;1] % [nGaussIntPts 1]
     end
     
 %% CONSTRUCTOR / DESTRUCTOR
