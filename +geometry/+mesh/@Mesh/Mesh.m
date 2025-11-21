@@ -802,6 +802,38 @@ methods
             otherwise ; error(['Curl is not defined in ' num2str(dim) 'D']) ;
         end
     end
+
+    function LB = laplaceBeltrami(this,lumped)
+    % Build the Laplace-Beltrami operator that approximates the Laplacian
+    % estimate the laplacian l ~= \nabla(f) as:
+    % l~ = argmin phi(l) = .5*int([l-\nabla(f)]^2 dx)
+    % \forall dl, dphi(l) = 0 (stationnarity)
+    %                     = int(dl*l dx) - int(dl*\nabla(f) dx)
+    %                     = int(dl*l dx) + int(grad(dl).grad(f) dx) - int(dl*grad(f).n dS)
+    %                     = dl'*Ml*l + dl'*Ll*f - dl'*nGbn*f
+    if nargin<2 || isempty(lumped) ; lumped = false ; end
+    % Integration utils
+        [ee,w,ie] = this.integration ;
+        nQP = numel(ie) ;
+        W = spdiags(w,0,nQP,nQP) ;
+    % Interpolation matrices
+        N = this.interpMat(ee,ie) ;
+        G = this.diffMat(ee,ie) ;
+    % "Mass" matrix
+        Ml = N'*W*N ;
+        if lumped ; Ml = diag(sparse(sum(Ml,1))) ; end
+    % Interior domain
+        Ll = cat(1,G{:})'*kron(speye(this.nCoord),W)*cat(1,G{:}) ;
+    % Boundaries
+        [eb,wb,ib,norB] = this.boundaryIntegration() ;
+        Nb = this.interpMat(eb,ib) ;
+        Gb = this.diffMat(eb,ib) ;
+        norB = cellfun(@(n)diag(sparse(n)),num2cell(norB,1),'uni',false) ;
+        Gbn = cat(2,norB{:})*cat(1,Gb{:}) ;
+        nGbn = Nb'*diag(sparse(wb))*Gbn ;
+    % Final operator
+        LB = Ml\(nGbn-Ll) ;
+    end
     
     function [M,jj] = jumpMat(this,featJ,featF)
     % Return a sparse matrix so that j = M*f is the jump of f

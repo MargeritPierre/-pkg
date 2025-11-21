@@ -195,8 +195,8 @@ import pkg.geometry.levelset.*
     smoothRatio = .5 ; % weight of neightbors
     smoothPower = 2 ; % Recursive smoothing
     minChange = 0.001 ; % minimum change in density at convergence
-    maxIt = 100 ; % maximum number of iterations
-    plotFreq = 1 ; % plot update frequency
+    maxIt = 500 ; % maximum number of iterations
+    plotFreq = 5 ; % plot update frequency
 % Integration matrices
     [ee,w,ie] = mesh.integration ;
     V0 = sum(w) ; % mesh volume
@@ -319,7 +319,7 @@ x = meanMat*repmat(x,prod(N),1) ;
 clf ; axis equal ; plot(mesh,'CData',x,'VisibleEdges','none') ;
 
 %% CUT THE SHAPE
-    lvl = 10/100 ;
+    lvl = 20/100 ;
 % Extract inner boundaries
    shape = mesh.cut(lvl-x).IN ;
    shape.clean ;
@@ -328,7 +328,7 @@ clf ; axis equal ; plot(mesh,'CData',x,'VisibleEdges','none') ;
     
     
 %% CUT AND SMOOTH THE SHAPE
-    lvl = 10/100 ;
+    lvl = 20/100 ;
     smoothIt = 50 ;
 % Extract inner boundaries
     shape = mesh.cut(lvl-x).ON ;
