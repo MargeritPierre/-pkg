@@ -6,6 +6,7 @@ properties
     Ne(1,:) double = [] ; % number of elements
     Domain(2,:) double = [] ; % grid domain
 end
+
 methods
     function this = GridMesh(varargin)
     % Constructor

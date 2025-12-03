@@ -9,18 +9,18 @@
 clc
 clear all
 import pkg.geometry.levelset.*
-    switch 4
-        case 1 % cantilever beam
+    switch 3
+        case 1 % 3D cantilever beam
             % Mesh
-                dx = 1/150 ; 
-                [xx,yy] = meshgrid(0:dx:1,0:dx:1) ;
-                mesh = pkg.geometry.mesh.Mesh(cat(3,xx,yy)) ;
-            % Left edge clamped
-                fixDOF = mesh.near([0 NaN]).*[1 1] ;
-            % Loads on right edge
-                F = mesh.near([max(mesh.Nodes(:,1)) NaN]).*[0 1] ; cat(3,[1 0],[0 1]) ;
+                L = [2 1 1] ;
+                dx = 1/15 ; 
+                mesh = pkg.geometry.mesh.GridMesh(L.*[0;1],dx) ;
+            % Left face clamped
+                fixDOF = mesh.near([0 NaN NaN]).*[1 1 1] ;
+            % Loads on right face
+                F = mesh.near([max(mesh.Nodes(:,1)) NaN NaN]).*[0 0 1] ;
             % Imposed densities
-                xFull = any(fixDOF|F(:,:,1),2) ;
+                xFull = any(fixDOF|F,2) ;
                 xZero = false(mesh.nNodes,1) ;
         case 2 % hollow disk
             % Mesh
@@ -56,23 +56,24 @@ import pkg.geometry.levelset.*
                 xZero = false(mesh.nNodes,1) ;
         case 3 % link
             % Mesh
-                D = 2 ; R1 = 2/10 ; R2 = 1/10 ; d = 1/10 ; dx = D/50 ; e = 1*dx ; 1/40 ;
+                D = 2 ; R1 = 2/10 ; R2 = 1/10 ; d = 4/10 ; dx = D/30 ; e = 1*dx ; H = .5 ; subdiv = 1 ;
                 lvlst = Polygon([0 -R1-d ; 0 R1+d ; D R2+d ; D -R2-d]) ;
                 lvlst = lvlst + Circle([0 0],R1+d) + Circle([D 0],R2+d) ;
                 lvlst = lvlst - Circle([0 0],R1) - Circle([D 0],R2) ;
                 mesh = lvlst.mesh(dx) ;
-                mesh.CatmullClark(3) ;
+                mesh.CatmullClark(subdiv) ;
+                mesh = mesh.extrude([0 0 H],floor((2^subdiv)*H/dx)) ;
             % First hole is supporting
-                fixDOF = mesh.near(@(p)sum(p.^2,2)-R1^2).*[1 1] ;
+                fixDOF = mesh.near(@(p)sum(p(:,1:2).^2,2)-R1^2).*[1 1 1] ;
             % Second hole is loaded vertically on its bottom half
-                io = find(mesh.near(@(p)(sum((p-[D 0]).^2,2)-R2^2) + double(p(:,2)>0))) ;
+                io = find(mesh.near(@(p)(sum((p(:,1:2)-[D 0]).^2,2)-R2^2) + double(p(:,2)>0))) ;
                 xo = mesh.Nodes(io,:) ;
-                fo = xo.*[0 1] ;
-                F = sparse(io*[1 1],[1 2].*ones(numel(io),1),fo,mesh.nNodes,2) ;
+                fo = xo.*[0 1 0] ;
+                F = sparse(io*[1 1 1],[1 2 3].*ones(numel(io),1),fo,mesh.nNodes,3) ;
             % Imposed densities
                 xFull = any(fixDOF|abs(F),2) ...
-                            | sum(mesh.Nodes.^2,2)-(R1+e)^2<0 ...
-                            | sum((mesh.Nodes-[D 0]).^2,2)-(R2+e)^2<0 ;
+                            | sum(mesh.Nodes(:,1:2).^2,2)-(R1+e)^2<0 ...
+                            | sum((mesh.Nodes(:,1:2)-[D 0]).^2,2)-(R2+e)^2<0 ;
                 xZero = false(mesh.nNodes,1) ;
         case 4 % hook
             % Shape params
@@ -80,8 +81,9 @@ import pkg.geometry.levelset.*
                 R1m = 2/20 ; R1p = 18/100 ;
                 R2m = 4/20 ; R2p = 9/20 ; xC2 = 18/100 ;
                 e = (R1p-R1m)/3 ; 
-                dx0 = H/10 ; 
-                subdiv = 3 ;
+                t = 3/10 ;
+                dx0 = H/20 ; 
+                subdiv = 1 ;
             % Determine remaining parameters
                 dd = @(Px,Py,R3m,R3p)[sqrt(Px^2+(H+Py)^2)-(R2m+R3p) ; sqrt((Px-xC2)^2+(H+Py)^2)-(R2p+R3m) ; sqrt(Px^2+Py^2)-(R1p+R3m) ; 2*R1p-(R3p-R3m)] ;
                 pp = [H 0 H-R1p H+R1p] ;
@@ -103,18 +105,18 @@ import pkg.geometry.levelset.*
                 %plot(lvlst) ;
                 mesh = lvlst.mesh(dx0) ;
                 mesh.CatmullClark(subdiv) ;
-                plot(mesh) ;
+                mesh.extrude([0 0 t],floor((2^subdiv)*t/dx0))
             % First hole is supporting on its top half
-                fixDOF = (mesh.near(@(p)sum(p.^2,2)-R1m^2) & mesh.Nodes(:,2)>=0).*[1 1] ;
+                fixDOF = (mesh.near(@(p)sum(p(:,1:2).^2,2)-R1m^2) & mesh.Nodes(:,2)>=0).*[1 1 1] ;
             % Second hole is loaded vertically on its bottom half
-                io = find(mesh.near(@(p)sum((p-[0 -H]).^2,2)-R2m^2) & mesh.Nodes(:,2)<=-H) ;
+                io = find(mesh.near(@(p)sum((p(:,1:2)-[0 -H]).^2,2)-R2m^2) & mesh.Nodes(:,2)<=-H) ;
                 xo = mesh.Nodes(io,:) ;
-                fo = xo.*[0 1] ;
-                F = sparse(io*[1 1],[1 2].*ones(numel(io),1),fo,mesh.nNodes,2) ;
+                fo = xo.*[0 1 0] ;
+                F = sparse(io*[1 1 1],[1 2 3].*ones(numel(io),1),fo,mesh.nNodes,3) ;
             % Imposed densities
                 xFull = any(fixDOF|F,2) ...
-                            | sum(mesh.Nodes.^2,2)-(R1m+e)^2<0 ...
-                            | sum((mesh.Nodes-[0 -H]).^2,2)-(R2m+e)^2<0 & mesh.Nodes(:,2)<=-H ;
+                            | sum(mesh.Nodes(:,1:2).^2,2)-(R1m+e)^2<0 ...
+                            | sum((mesh.Nodes(:,1:2)-[0 -H]).^2,2)-(R2m+e)^2<0 & mesh.Nodes(:,2)<=-H ;
                 xZero = false(mesh.nNodes,1) ;
         case 5 % cantilever beam
             L = [1 1] ;
@@ -173,7 +175,7 @@ import pkg.geometry.levelset.*
     Tdof(:,sum(Tdof,1)==0) = [] ;
     nLoadCases = numel(F)/mesh.nNodes/mesh.nCoord ;
 % Display mesh
-    clf ; axis equal ; pl = plot(mesh) ;
+    clf ; axis equal ; pl = plot(mesh,'VisibleFaces','all') ;
     if exist('fixDOF','var') ; pl.Selected.Nodes = find(any(fixDOF,2)) ; end
     pl.CData = [1 1 1] - [1 0 1].*xFull ;
 % Display loads
@@ -192,11 +194,11 @@ import pkg.geometry.levelset.*
     initialDistribution = @(N)ones(N)+0.1*rand(N) ; % initial material distribution
     maxChange = 0.02 ; % maximum change in material density by iteration
     eta = .1 ; % damping factor
-    smoothRatio = .5 ; % weight of neightbors
+    smoothRatio = .15 ; % weight of neightbors
     smoothPower = 2 ; % Recursive smoothing
     minChange = 0.001 ; % minimum change in density at convergence
     maxIt = 500 ; % maximum number of iterations
-    plotFreq = 5 ; % plot update frequency
+    plotFreq = 1 ; % plot update frequency
 % Integration matrices
     [ee,w,ie] = mesh.integration ;
     V0 = sum(w) ; % mesh volume
@@ -205,10 +207,11 @@ import pkg.geometry.levelset.*
     G = mesh.diffMat(ee,ie) ;
     O = sparse(nGP,mesh.nNodes) ;
 % Strain matrix [E11;E22;2E12] = B*u(:)
-    B = [G{1} O ; O G{2} ; G{2} G{1}] ; 
+    B = [G{1} O O ; O G{2} O ; O O G{3} ; G{2} G{1} O ; G{3} O G{1} ; O G{3} G{2}] ; 
 % Plane stiffness
     %C = sparse([1-nu nu 0 ; nu 1-nu 0 ; 0 0 (1-2*nu)/2]) ; % plane strain
-    C = sparse([1 nu 0 ; nu 1 0 ; 0 0 (1-nu)/2]) ; % plane stress
+    % C = sparse([1 nu 0 ; nu 1 0 ; 0 0 (1-nu)/2]) ; % plane stress
+    C = pkg.fem.bloch.stiffness(1,.5/(1+nu)) ;
 % Boundary conditions
     Bk = B*Tdof ;
     Fk = Tdof'*reshape(F,[],nLoadCases) ;
@@ -219,15 +222,16 @@ import pkg.geometry.levelset.*
     S = S^smoothPower ;
     Nx = N*S ;
 % Volume derivative
-    dv_dx = sum(Nx'*diag(sparse(w)),2) ; ones(size(Nx,2),1) ;
+    dv_dx = sum(Nx'*diag(sparse(w)),2) ;
 % Initialization
     x = volfrac.*initialDistribution([size(Nx,2),1]) ;
     x(xFull) = 1 ;
     x(xZero) = xmin ;
     x = S*x ;
     U = zeros(mesh.nNodes,mesh.nCoord,nLoadCases) ;
-    clf ; axis equal ; pl =  plot(mesh,'VisibleEdges','none') ;
+    clf ; axis equal tight ; pl =  plot(mesh,'VisibleEdges','none','VisibleFaces','all') ; view(35,30)
 % UPDATE LOOP
+    profile on
     it = 0 ; change = Inf ; outFlag = '' ; lastPlotTime = tic ;
     while isempty(outFlag)
     % FE stiffness matrix
@@ -245,11 +249,11 @@ import pkg.geometry.levelset.*
         Uk = K\f ;
         U = reshape(full(Tdof*Uk),mesh.nNodes,mesh.nCoord,nLoadCases) ;
     % Strains & Stresses
-        EPS = reshape(B*reshape(U,[],nLoadCases),nGP,3,nLoadCases) ;
+        EPS = reshape(B*reshape(U,[],nLoadCases),nGP,size(C,1),nLoadCases) ;
         if exist('EPS0','var') ; EPS = EPS+EPS0 ; end
-        SIG = (xe.^penal).*reshape(sum(reshape(full(C),1,3,3).*reshape(EPS,nGP,1,3,nLoadCases),3),nGP,3,nLoadCases) ;
+        SIG = (xe.^penal).*reshape(sum(reshape(full(C),[1 size(C)]).*reshape(EPS,nGP,1,size(C,1),nLoadCases),3),nGP,size(C,1),nLoadCases) ;
     % Compliance & derivative 
-        ce = sum(w.*SIG.*EPS.*[1 1 2],2) ;
+        ce = sum(w.*SIG.*EPS.*[1 1 1 2 2 2],2) ;
         c = reshape(sum(ce,1),[1 nLoadCases]) ;% sum((K*Uk).*Uk,1)' ;%
         %dce_dx = reshape(kron(speye(nLoadCases),Nx')*diag(sparse(reshape((penal./xe).*ce,[],1))),[],nLoadCases) ;
         dc_dx = Nx'*reshape((penal./xe).*ce,[nGP nLoadCases]) ;% Nx'*(penal*xe.^(penal-1).*w.*reshape(sum(EPS.^2,2),[],nLoadCases)) ;%
@@ -294,7 +298,7 @@ import pkg.geometry.levelset.*
         if ~isempty(outFlag) || toc(lastPlotTime)>1/plotFreq
             %pl.Deformation = 0.1*U/max(abs(U(:))).*norm(range(mesh.boundingBox,1)) ;
             VM = sqrt(sum(SIG.^2,2)) ;
-            pl.CData = sum(VM(:,:,end),3) ; zeros(mesh.nNodes,3) ;
+            pl.CData = sum(VM(:,:,end),3) ;
             pl.Faces.FaceAlpha = 'interp' ;
             pl.Faces.FaceVertexAlphaData = full(x) ;
             %pl.CData = x ;
@@ -303,6 +307,7 @@ import pkg.geometry.levelset.*
         end
     end
     disp(outFlag) ;
+    profile off
     return
     
 %% PLOT THE SOLUTION
@@ -319,37 +324,77 @@ x = meanMat*repmat(x,prod(N),1) ;
 clf ; axis equal ; plot(mesh,'CData',x,'VisibleEdges','none') ;
 
 %% CUT THE SHAPE
-    lvl = 20/100 ;
+    lvl = 30/100 ;
 % Extract inner boundaries
-   shape = mesh.cut(lvl-x).IN ;
+   shape = mesh.simplex().cut(lvl-x).IN ;
    shape.clean ;
 % Display
-    clf ; axis equal ; pl = plot(shape,'VisibleEdges','none') ;
-    
+    clf ; axis equal ; pl = plot(shape,'EdgeColor','none') ;
+    light
+    view(35,30) ;
     
 %% CUT AND SMOOTH THE SHAPE
-    lvl = 20/100 ;
+    lvl = 30/100 ;
+    smoothIt = 100 ;
+% Extract inner boundaries
+    shape = mesh.simplex().cut(lvl-x).IN ;
+    shape.Elems = shape.Faces.subpart(shape.outerFaces) ;
+% Laplacian smoothing
+    fixNodes = mesh.Nodes(false(mesh.nNodes,1) | xFull,:) ;
+    [pp,d2] = shape.closestNode(fixNodes) ;
+    pp = pp(d2<shape.defaultTolerance) ;
+    smooth = ~full(logical(sparse(pp,pp*0+1,1,shape.nNodes,1))) ;% & ~xZero ;
+    e2n = shape.elem2node ;
+    me = e2n*diag(sparse(1./sum(e2n,1))) ;
+    mn = diag(sparse(1./sum(e2n,2)))*e2n ;
+    mn = mn(smooth,:) ;
+    for ii = 1:smoothIt
+        xe = me'*shape.Nodes ; % elem 
+        shape.Nodes(smooth,:) = (shape.Nodes(smooth,:) + mn*xe)/2 ;
+        ii
+    end
+% % Add original mesh's shape
+%     out = pkg.geometry.mesh.Mesh('Nodes',mesh.Nodes,'Elems',mesh.Edges.subpart(mesh.boundaryEdges)) ;
+%     out.Nodes(x<lvl,:) = NaN ;
+%     out.clean()
+%     shape = shape.merge(out).clean ;
+% % Regenerate the 2D mesh from boundaries (delaunay triang.)
+%     shape = pkg.geometry.mesh.Mesh('Nodes',shape.Nodes,'Elems',delaunay(shape.Nodes)) ;
+%     valid = mesh.interpMat(shape.centroid,[],mesh.Elems,false)*x>lvl ;
+%     shape.Elems = shape.Elems.subpart(valid) ;
+% Display
+    clf ; axis equal ; pl = plot(shape,'EdgeColor','none') ;
+    light
+    view(35,30) ;
+    
+%% CUT AND SMOOTH THE SHAPE
+    lvl = 40/100 ;
     smoothIt = 50 ;
 % Extract inner boundaries
-    shape = mesh.cut(lvl-x).ON ;
+    shape = mesh.simplex().cut(lvl-x).ON ;
     shape.clean ;
 % Laplacian smoothing
+    smooth = true(shape.nNodes,1) & ~shape.outerNodes ;
     e2n = shape.elem2node ;
     me = e2n./sum(e2n,1) ;
     mn = e2n./sum(e2n,2) ;
     for ii = 1:smoothIt
         xe = me'*shape.Nodes ; % elem 
-        shape.Nodes = (shape.Nodes + mn*xe)/2 ;
+        shape.Nodes(smooth,:) = (shape.Nodes(smooth,:) + mn(smooth,:)*xe)/2 ;
     end
-% Add original mesh's shape
-    out = pkg.geometry.mesh.Mesh('Nodes',mesh.Nodes,'Elems',mesh.Edges.subpart(mesh.boundaryEdges)) ;
-    shape = shape.merge(out).clean ;
-% Regenerate the 2D mesh from boundaries (delaunay triang.)
-    shape = pkg.geometry.mesh.Mesh('Nodes',shape.Nodes,'Elems',delaunay(shape.Nodes)) ;
-    valid = mesh.interpMat(shape.centroid,[],mesh.Elems,false)*x>lvl ;
-    shape.Elems = shape.Elems.subpart(valid) ;
+% % Add original mesh's shape
+%     out = pkg.geometry.mesh.Mesh('Nodes',mesh.Nodes,'Elems',mesh.Edges.subpart(mesh.boundaryEdges)) ;
+%     out.Nodes(x<lvl,:) = NaN ;
+%     out.clean()
+%     shape = shape.merge(out).clean ;
+% % Regenerate the 2D mesh from boundaries (delaunay triang.)
+%     shape = pkg.geometry.mesh.Mesh('Nodes',shape.Nodes,'Elems',delaunay(shape.Nodes)) ;
+%     valid = mesh.interpMat(shape.centroid,[],mesh.Elems,false)*x>lvl ;
+%     shape.Elems = shape.Elems.subpart(valid) ;
 % Display
-    clf ; axis equal ; pl = plot(shape,'VisibleEdges','none') ;
+    clf ; axis equal ; pl = plot(shape,'EdgeColor','none') ;
+    light
+    view(35,30) ;
     
     
 %% BUILD THE PART

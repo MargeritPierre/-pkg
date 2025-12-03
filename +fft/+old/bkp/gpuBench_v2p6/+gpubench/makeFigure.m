@@ -1,0 +1,12 @@
+function fig = makeFigure( name )
+%makeFigure  create a figure suitable for printing in a GPUBench report
+%
+%   fig = gpubench.makeFigure(name)
+
+%   Copyright 2011-2024 The MathWorks, Inc.
+
+fig = figure( 'Name', name, ...
+    'NumberTitle', 'off', ...
+    'Color', 'w', ...
+    'Visible', 'off' );
+set( fig, 'DefaultAxesColor', 0.95*[1 1 1] );

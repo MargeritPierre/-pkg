@@ -1,0 +1,36 @@
+function kernel = nabla(grid,method)
+% Fourier-domain derivation operator on a gridded tensor field
+
+    if nargin<2 || isempty(method) ; method = 'analytic' ; end
+
+% Grid step & Fourier Coordinates
+    xi = grid.fouriercoordinates ;
+    dx = grid.dx ;
+
+% Derivation FFT-kernel
+    kernel = pkg.fft.Field(grid,'Order',1,'Fourier',true) ;
+    switch method
+        case 'analytic' % fft(df_dx) = 1i*xi*fft(f)
+            kernel.Data = 1i*xi.Data ;
+            % Remove "ambiguous" wavevectors where xi=\pm N*pi/L
+            for d = find(mod(kernel.Grid.N,2)==0)
+                selvec = 1-full(sparse(1,double(kernel.Grid.N(d))/2+1,1,1,kernel.Grid.N(d))) ; 
+                selvec = reshape(selvec,[ones(1,d-1+kernel.Order) kernel.Grid.N(d) 1 1]) ;
+                kernel.Data = kernel.Data.*cast(selvec,class(kernel.Data)) ;
+            end
+        otherwise % discrete formulations
+            xi_dx = cast(dx,class(xi.Data))*xi.Data(:,:) ;
+            inv_dx = cast(dx\eye(size(dx,1)),class(kernel.Data)) ;
+            switch method
+                case 'finitedifferences' % df_dx = (f(x+dx/2)-f(x-dx/2))/dx
+                    kernel.Data(:,:) = (2i*inv_dx)*sin(.5*xi_dx) ;
+                case 'willot' % mean derivative over the neightbor nodes
+                    kernel.Data(:,:) = (2i*inv_dx)*sin(.5*xi_dx) ;
+                    for d = 1:kernel.Grid.ndims
+                        kernel.Data([1:d-1 d+1:end],:)
+                    end
+            end
+    end
+
+end
+

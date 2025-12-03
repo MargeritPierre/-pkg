@@ -1,0 +1,182 @@
+clearvars
+
+% Unit Cell
+L = [1 1 1] ; % dimensions
+N = (2^8)*ones(size(L)) ; % discretization
+D = numel(L) ; % unit cell dimension
+E = .1*(1-eye(D)) ; % macroscopic strain
+kappa0 = 1 ; mu0 = 1 ; % matrix properties
+contrast = 1e16 ; % pores/inclusion TOTAL contrast
+xS = .5*L ; Rs = .3*min(L) ; % rigid inclusions (positions & radii)
+x0 = [0*L;L;eye(D).*L;(1-eye(D)).*L] ; R0 = Rs ; % soft pores (positions & radii)
+% Solver
+nabla_method = 'analytic' ; % 'analytic' or 'willot'
+datacast = @(data)gpuArray(single(data)) ; % CPU/GPU & data type
+algo = 'gmres' ; % 'pcg' or 'gmres'
+tol = sqrt(eps(datacast(1))) ; % iteration residual tolerance
+maxit = 100 ; % maximum number of algo iterations
+
+disp("-------------------")
+disp("Start")
+dev = gpuDevice ;
+disp("  available GPU memory: "+string(dev.AvailableMemory/1e6)+"MB")
+
+% Build the grid
+disp("Grid")
+grid = datacast(pkg.fft.Grid(N,'dx',L./N)) ;
+disp("  available GPU memory: "+string(dev.AvailableMemory/1e6)+"MB")
+
+% Material phase field
+disp("Material phase")
+x = grid.coordinates() ;
+sdf = @(x,xc,R)tensormin(tensorsum((x-xc').^2,1)-(R.^2)',[]) ;
+phi = .5.*(sign(sdf(x,x0,R0))-sign(sdf(x,xS,Rs))) ;
+disp("  available GPU memory: "+string(dev.AvailableMemory/1e6)+"MB")
+
+% material properties
+disp("Material properties")
+modulation = sqrt(contrast).^phi ;
+kappa = kappa0.*modulation ;
+mu = mu0.*modulation ;
+if D==2 ; clf ; axis equal tight ; plot(modulation) ; set(gca,'colorscale','log') ; colorbar ; clim([sqrt(1/contrast) sqrt(contrast)]) ; end
+disp("  available GPU memory: "+string(dev.AvailableMemory/1e6)+"MB")
+
+% Displacement field
+disp("U field")
+u = pkg.fft.Field(grid,'Order',1,'Fourier',true) ; 
+disp("  available GPU memory: "+string(dev.AvailableMemory/1e6)+"MB")
+
+% Derivation operator
+disp("Nabla")
+nabla = pkg.fft.fields.nabla(grid,nabla_method) ;
+disp("  available GPU memory: "+string(dev.AvailableMemory/1e6)+"MB")
+
+% Operator
+disp("Operators")
+EPS = @(u)ifft(sym(grad(u,nabla))) ;
+% EPS = @(u)ifft(symgrad(u,nabla)) ;
+Id = datacast(pkg.fft.Field((1/D)*eye(D))) ;
+sph = @(EPS)tensorprod(Id,trace(EPS),0) ;
+SIG = @(kappa,mu,EPS)(((3.*kappa)-(2.*mu)).*sph(EPS) + (2.*mu).*EPS) ;
+f = @(SIG)fft(div(SIG,nabla)) ;
+disp("  available GPU memory: "+string(dev.AvailableMemory/1e6)+"MB")
+
+% "Force" vector
+disp("LHS")
+b = -div(SIG(kappa,mu,E),nabla) ;
+if D==2 ; clf ; axis equal tight ; pl = plot(real(ifft(b))) ; colorbar ; end
+disp("  available GPU memory: "+string(dev.AvailableMemory/1e6)+"MB")
+
+%% Preconditionner
+disp("A0")
+A0 = assemble(@(u)f(SIG(kappa0,mu0,EPS(u))),u) ;
+singular = all(abs(A0.Data)<sqrt(eps),D+(1:2)) ;
+A0.Data = A0.Data + singular.*reshape(eye(D),[ones(1,D) D D]) ;
+iA0 = inv(A0) ;
+% iA0.Data = iA0.Data.*(~singular) ;
+iA0_op = @(x)fft(tensorprod(iA0,copy(u).setdata(x),1)).getdata(true) ;
+clear 'A0' 'singular'
+disp("  available GPU memory: "+string(dev.AvailableMemory/1e6)+"MB")
+
+% C = assemble(@(EPS)SIG(kappa,mu,EPS),EPS(u)) ;
+% SIG = @(kappa,mu,EPS)tensorprod(C,EPS,2) ;
+
+% Preconditionner
+disp("Solve")
+A = @(u)f(SIG(kappa,mu,EPS(u))) ;
+A_op = @(x)fft(A(copy(u).setdata(x))).getdata(true) ;
+
+% profile on
+tic 
+switch algo
+    case 'pcg'
+        u.Data = pcg(A_op,b.getdata(true),tol,maxit,iA0_op) ;
+    case 'gmres'
+        u.Data = gmres(A_op,b.getdata(true),[],tol,maxit,iA0_op) ; 
+end
+toc
+% profile off
+disp("  available GPU memory: "+string(dev.AvailableMemory/1e6)+"MB")
+
+% Preconditionner
+disp("Fields")
+u = ifft(u) ;
+x = grid.coordinates() ;
+e = ifft(EPS(u)) + E ;
+s = SIG(kappa,mu,e) ;
+u = u + tensorprod(pkg.fft.Field(E),x,1) ;
+disp("  available GPU memory: "+string(dev.AvailableMemory/1e6)+"MB")
+
+if D==2 ; clf ; axis equal tight off ; pl = plot(x+real(u),norm(e)) ; colorbar ; end
+
+if D==3
+    vol = volshow() ;
+    vol.RenderingStyle = 'VolumeRendering' ;
+    viewer = vol.Parent ;
+    viewer.Lighting = 'off' ;
+    viewer.BackgroundGradient = 'off' ;
+    viewer.BackgroundColor = 'w' ;
+    vol.Data = gather(norm(e).Data) ;
+    vol.AlphaData = (5/norm(N)).*gather(getdata((5).^phi)) ;
+    vol.Colormap = jet ;
+end
+
+return
+
+%% Timing...
+
+%profile on
+disp('=== Timing ===')
+
+% Tensorprod function
+disp('Tensor product')
+EPS = pkg.fft.Field(grid,'Order',2) ;
+C = pkg.fft.Field(grid,'Order',4) ;
+fcn = @()tensorprod(C,EPS,2) ;
+CPU_GPU_compare(fcn,[C EPS]) ;
+
+% Hooke's law
+disp('Hooke''s law')
+EPS = pkg.fft.Field(grid,'Order',2) ;
+kappa = pkg.fft.Field(grid,'Order',0) ;
+mu = copy(kappa) ;
+fcn = @()SIG(kappa,mu,EPS) ;
+CPU_GPU_compare(fcn,[kappa mu EPS]) ;
+
+%% FFT/IFFT
+disp('FFT/IFFT')
+u = pkg.fft.Field(grid,'Order',1) ;
+fcn = @()ifft(fft(u)) ;
+CPU_GPU_compare(fcn,u) ;
+
+
+% profile off
+% profile viewer
+
+
+%% UTILS
+function A = assemble(A_op,input_field)
+    sz = input_field.Size ;
+    Id = pkg.fft.Field(input_field.Grid,'Size',[sz sz],'Fourier',input_field.Fourier) ;
+    Id.Data = repmat(reshape(eye(prod(sz)),1,[]),[prod(Id.Grid.N) 1 1]) ;
+    A = A_op(Id) ;
+end
+
+function [CPUtime,GPUtime] = CPU_GPU_compare(fcn,fields,dataclass)
+    if nargin<3 ; dataclass = 'single' ; end
+    % fields = arrayfun(@copy,fields) ;
+    fields = arrayfun(@(field)field.setdata(@(sz)randn(sz,dataclass)+1i*randn(sz,dataclass)),fields) ;
+    % Push data into MAIN memory
+    fields = arrayfun(@(field)field.setdata(gather(field.getdata)),fields) ; 
+    % CPU version
+    CPUtime = timeit(fcn) ; 
+    disp("  CPU:"+string(CPUtime))
+    % Push data to GPU
+    fields = arrayfun(@(field)field.setdata(gpuArray(field.getdata)),fields) ; 
+    % check that the output is still on the GPU
+    if ~strcmp(class(fcn().Data),'gpuArray') ; warning('output not on GPU') ; end
+    % GPU version
+    GPUtime = gputimeit(fcn) ; 
+    disp("  GPU:"+string(GPUtime))
+end
+
